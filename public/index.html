@@ -799,7 +799,8 @@
     if (!p) { toast("Select a preset to edit.", true); return; }
     editorDraft = clone(p);
     editorDraft.__isNew = isNew;
-    editorSubIndex = 0;
+    // open on the sub-preset selected in the main dropdown (fall back to the first)
+    editorSubIndex = Math.max(0, editorDraft.subPresets.findIndex((s) => s.id === selectedSubId));
     if (!editorDraft.subPresets.length) addSubPreset();   // start with one for convenience
     else renderEditor();
     $("#editorBackdrop").hidden = false;
