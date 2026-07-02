@@ -82,7 +82,7 @@
   .grow { flex: 1; }
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 
-  input[type="text"], textarea, select {
+  input[type="text"], input[type="number"], textarea, select {
     width: 100%;
     background: var(--panel-2);
     border: 1px solid var(--border);
@@ -311,6 +311,48 @@
     .app { grid-template-columns: 1fr; height: auto; }
     .pane.right { min-height: 60vh; }
   }
+
+  /* ---------- export modal ---------- */
+  .export-modal { width: min(980px, 100%); }
+  .export-body { flex-direction: row; align-items: flex-start; gap: 20px; }
+  .export-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .export-side { width: 260px; flex: none; display: flex; flex-direction: column; gap: 16px; }
+  .export-hint { margin: 0; }
+  .crop-wrap {
+    position: relative; margin: 0 auto; max-width: 100%;
+    background: var(--panel-2); border-radius: 8px; overflow: hidden;
+    touch-action: none; user-select: none;
+  }
+  .crop-wrap img { display: block; width: 100%; height: 100%; -webkit-user-drag: none; }
+  .crop-box {
+    position: absolute; box-sizing: border-box;
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, .5);
+    cursor: move;
+  }
+  .crop-handle {
+    position: absolute; width: 12px; height: 12px;
+    background: var(--accent); border: 1px solid var(--accent-ink); border-radius: 2px;
+  }
+  .crop-handle.nw { left: 2px; top: 2px; cursor: nwse-resize; }
+  .crop-handle.ne { right: 2px; top: 2px; cursor: nesw-resize; }
+  .crop-handle.sw { left: 2px; bottom: 2px; cursor: nesw-resize; }
+  .crop-handle.se { right: 2px; bottom: 2px; cursor: nwse-resize; }
+  .thumb.selected { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .thumb.none {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); cursor: pointer; font-size: 12px;
+  }
+  .export-preview-wrap {
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-height: 120px;
+    display: flex; align-items: center; justify-content: center; background: var(--panel-2);
+  }
+  #exportPreview { max-width: 100%; max-height: 200px; image-rendering: pixelated; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  .export-status { font-size: 12px; color: var(--muted); }
+  @media (max-width: 720px) {
+    .export-body { flex-direction: column; }
+    .export-side { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -363,6 +405,7 @@
       <div class="preview-bar">
         <div class="model-badge" id="modelBadge"></div>
         <div class="spacer"></div>
+        <button class="btn ghost" id="prepareExportBtn" disabled>Prepare for export</button>
         <a class="btn ghost disabled" id="downloadBtn" download>Download</a>
         <button class="btn ghost" id="copyPromptBtn" disabled>Copy prompt</button>
       </div>
@@ -401,6 +444,46 @@
         <div class="spacer"></div>
         <button class="btn ghost" id="editorCancel">Close</button>
         <button class="btn primary" id="editorSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ EXPORT MODAL ============ -->
+  <div class="modal-backdrop" id="exportBackdrop" hidden>
+    <div class="modal export-modal" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+      <div class="modal-head">
+        <h2 id="exportTitle">Prepare for export</h2>
+        <button class="icon-btn" id="exportClose" title="Close">✕</button>
+      </div>
+      <div class="modal-body export-body">
+        <div class="export-stage">
+          <div class="crop-wrap" id="cropWrap">
+            <img id="exportSrcImg" alt="Generated image" />
+            <div class="crop-box" id="cropBox">
+              <span class="crop-handle nw" data-handle="nw"></span>
+              <span class="crop-handle ne" data-handle="ne"></span>
+              <span class="crop-handle sw" data-handle="sw"></span>
+              <span class="crop-handle se" data-handle="se"></span>
+            </div>
+          </div>
+          <p class="field-hint export-hint">Drag inside the box to move it; drag a corner to resize. The box is locked to the export aspect ratio.</p>
+        </div>
+        <div class="export-side">
+          <div class="field">
+            <span>Frame</span>
+            <div class="thumbs" id="frameThumbs"></div>
+          </div>
+          <div class="field">
+            <span id="exportInfo">Preview</span>
+            <div class="export-preview-wrap"><canvas id="exportPreview"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <div class="export-status" id="exportStatus"></div>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="exportCancel">Close</button>
+        <button class="btn primary" id="exportDoBtn" disabled>Export PNG</button>
       </div>
     </div>
   </div>
@@ -618,6 +701,7 @@
     const dl = $("#downloadBtn"), cp = $("#copyPromptBtn");
     dl.classList.toggle("disabled", !enabled);
     cp.disabled = !enabled;
+    $("#prepareExportBtn").disabled = !enabled;
     if (!enabled) dl.removeAttribute("href");
   }
 
@@ -751,6 +835,18 @@
     row.append(field("Model", modelSel), field("Aspect ratio", aspSel), field("Resolution", resSel));
     host.append(row);
 
+    // export size (own row) — final pixel size AND crop aspect ratio
+    const parseDim = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : undefined; };
+    const wInput = el("input", { type: "number", min: "1", step: "1", value: s.exportWidth ?? "" });
+    const hInput = el("input", { type: "number", min: "1", step: "1", value: s.exportHeight ?? "" });
+    wInput.addEventListener("input", () => { s.exportWidth = parseDim(wInput.value); });
+    hInput.addEventListener("input", () => { s.exportHeight = parseDim(hInput.value); });
+    const wField = field("Export width (px)", wInput); wField.classList.add("grow");
+    const hField = field("Export height (px)", hInput); hField.classList.add("grow");
+    host.append(el("div", { className: "row" }, wField, hField));
+    host.append(el("div", { className: "field-hint",
+      textContent: "Final export size in pixels — also sets the crop aspect ratio (e.g. 64 × 64 → 1:1)." }));
+
     // references
     host.append(renderRefManager(s));
 
@@ -794,6 +890,8 @@
       model: "gemini-3.1-flash-image",
       aspectRatio: "1:1",
       resolution: "2K",
+      exportWidth: 64,
+      exportHeight: 64,
     });
     editorSubIndex = editorDraft.subPresets.length - 1;
     renderEditor();
@@ -861,6 +959,230 @@
     } catch (e) { toast(e.message, true); }
   }
 
+  // ---------------- export (crop + frame overlay) ----------------
+  let exportState = null;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  function openExportModal() {
+    if (!lastResult) return;
+    const sub = currentSub();
+    exportState = {
+      img: $("#exportSrcImg"),
+      natW: 0, natH: 0,
+      outW: sub?.exportWidth || 0,
+      outH: sub?.exportHeight || 0,
+      aspectStr: sub?.aspectRatio || "",
+      ar: null, locked: false,
+      crop: { x: 0, y: 0, w: 0, h: 0 },
+      minW: 16, _scale: 1,
+      frames: (presetsData.frames || []).slice(),
+      selectedFrameId: null, frameImg: null,
+      drag: null, rafPending: false,
+      onResize: layoutStage,
+    };
+    $("#exportDoBtn").disabled = true;
+    $("#exportStatus").textContent = "";
+    $("#exportInfo").textContent = "Preview";
+    const img = exportState.img;
+    img.onload = onSrcLoaded;
+    img.src = lastResult.imageDataUrl;
+    renderFrameThumbs();
+    $("#exportBackdrop").hidden = false;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("resize", exportState.onResize);
+  }
+  function closeExportModal() {
+    $("#exportBackdrop").hidden = true;
+    document.body.style.overflow = "";
+    if (exportState) window.removeEventListener("resize", exportState.onResize);
+    const img = $("#exportSrcImg"); img.onload = null; img.removeAttribute("src");
+    exportState = null;
+  }
+  function parseAspect(str) {
+    const m = /^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/.exec(str || "");
+    return m ? parseFloat(m[1]) / parseFloat(m[2]) : null;
+  }
+  function onSrcLoaded() {
+    const st = exportState; if (!st) return;
+    st.natW = st.img.naturalWidth; st.natH = st.img.naturalHeight;
+    if (!st.natW || !st.natH) { toast("Could not read the generated image.", true); return; }
+    if (st.outW > 0 && st.outH > 0) { st.ar = st.outW / st.outH; st.locked = true; }
+    else { const a = parseAspect(st.aspectStr); if (a) { st.ar = a; st.locked = true; } else { st.ar = null; st.locked = false; } }
+    let w, h;
+    if (st.ar) { const fitW = Math.min(st.natW, st.natH * st.ar); w = fitW * 0.6; h = w / st.ar; }
+    else { w = st.natW * 0.6; h = st.natH * 0.6; }
+    st.crop = { w, h, x: (st.natW - w) / 2, y: (st.natH - h) / 2 };
+    layoutStage();
+    st.minW = Math.min(st.natW, Math.max(16, 24 / (st._scale || 1)));
+    $("#exportDoBtn").disabled = false;
+    recompose();
+  }
+  function layoutStage() {
+    const st = exportState; if (!st || !st.natW) return;
+    const stage = document.querySelector(".export-stage");
+    const availW = Math.max(80, stage ? stage.clientWidth : 400);
+    const maxH = Math.max(140, window.innerHeight * 0.5);
+    const scale = Math.min(availW / st.natW, maxH / st.natH, 1);
+    st._scale = scale;
+    const dispW = Math.round(st.natW * scale), dispH = Math.round(st.natH * scale);
+    const img = st.img, wrap = $("#cropWrap");
+    img.style.width = dispW + "px"; img.style.height = dispH + "px";
+    wrap.style.width = dispW + "px"; wrap.style.height = dispH + "px";
+    renderCrop();
+  }
+  function renderCrop() {
+    const st = exportState; if (!st) return;
+    const rect = st.img.getBoundingClientRect();
+    const s = st.natW ? rect.width / st.natW : 0;
+    const box = $("#cropBox");
+    box.style.left = st.crop.x * s + "px";
+    box.style.top = st.crop.y * s + "px";
+    box.style.width = st.crop.w * s + "px";
+    box.style.height = st.crop.h * s + "px";
+  }
+  function onCropPointerDown(e) {
+    const st = exportState; if (!st) return;
+    st.drag = { mode: e.target.dataset.handle || "move", sx: e.clientX, sy: e.clientY, c0: { ...st.crop } };
+    window.addEventListener("pointermove", onCropPointerMove);
+    window.addEventListener("pointerup", onCropPointerUp, { once: true });
+    e.preventDefault();
+  }
+  function onCropPointerMove(e) {
+    const st = exportState; if (!st || !st.drag) return;
+    const rect = st.img.getBoundingClientRect();
+    const s = rect.width / st.natW;
+    const { mode, sx, sy, c0 } = st.drag;
+    if (mode === "move") {
+      st.crop.x = clamp(c0.x + (e.clientX - sx) / s, 0, st.natW - c0.w);
+      st.crop.y = clamp(c0.y + (e.clientY - sy) / s, 0, st.natH - c0.h);
+    } else {
+      const px = clamp((e.clientX - rect.left) / s, 0, st.natW);
+      const py = clamp((e.clientY - rect.top) / s, 0, st.natH);
+      const west = mode.includes("w"), north = mode.includes("n");
+      const ax = west ? c0.x + c0.w : c0.x;   // fixed opposite corner
+      const ay = north ? c0.y + c0.h : c0.y;
+      if (st.locked) {
+        const maxW = Math.min(west ? ax : st.natW - ax, (north ? ay : st.natH - ay) * st.ar);
+        const w = clamp(Math.max(Math.abs(ax - px), Math.abs(ay - py) * st.ar), st.minW, maxW);
+        st.crop.w = w; st.crop.h = w / st.ar;
+        st.crop.x = west ? ax - w : ax; st.crop.y = north ? ay - st.crop.h : ay;
+      } else {
+        const w = clamp(Math.abs(ax - px), st.minW, west ? ax : st.natW - ax);
+        const h = clamp(Math.abs(ay - py), st.minW, north ? ay : st.natH - ay);
+        st.crop.w = w; st.crop.h = h;
+        st.crop.x = west ? ax - w : ax; st.crop.y = north ? ay - h : ay;
+      }
+    }
+    renderCrop(); scheduleRecompose();
+  }
+  function onCropPointerUp() {
+    const st = exportState;
+    window.removeEventListener("pointermove", onCropPointerMove);
+    if (st) { st.drag = null; recompose(true); }
+  }
+  // ----- frames -----
+  function renderFrameThumbs() {
+    const st = exportState; if (!st) return;
+    const grid = $("#frameThumbs"); grid.innerHTML = "";
+    grid.append(el("div", {
+      className: "thumb none" + (st.selectedFrameId == null ? " selected" : ""),
+      title: "No frame", textContent: "None", onclick: () => selectFrame(null),
+    }));
+    for (const f of st.frames) {
+      grid.append(el("div", { className: "thumb" + (st.selectedFrameId === f.id ? " selected" : ""), onclick: () => selectFrame(f.id) },
+        el("img", { src: `/frames/${f.filename}`, alt: f.originalName, title: f.originalName }),
+        el("button", { className: "thumb-rm", textContent: "✕", title: "Delete frame",
+          onclick: (e) => { e.stopPropagation(); handleFrameDelete(f.id); } }),
+      ));
+    }
+    const fileInput = el("input", { type: "file", accept: ".png,image/png", multiple: true });
+    fileInput.style.display = "none";
+    fileInput.addEventListener("change", () => { if (fileInput.files?.length) handleFrameUpload([...fileInput.files]); fileInput.value = ""; });
+    grid.append(el("label", { className: "thumb add", title: "Add PNG frame" },
+      el("span", { className: "plus", textContent: "+" }),
+      el("span", { className: "add-label", textContent: "Add" }),
+      fileInput,
+    ));
+  }
+  function selectFrame(id) {
+    const st = exportState; if (!st) return;
+    st.selectedFrameId = id;
+    if (id == null) { st.frameImg = null; renderFrameThumbs(); recompose(); return; }
+    const f = st.frames.find((x) => x.id === id);
+    if (!f) { st.frameImg = null; recompose(); return; }
+    const im = new Image();
+    im.onload = () => { if (exportState && exportState.selectedFrameId === id) { exportState.frameImg = im; recompose(); } };
+    im.onerror = () => { if (!exportState) return; exportState.frameImg = null; exportState.selectedFrameId = null; renderFrameThumbs(); recompose(); toast("Frame failed to load.", true); };
+    im.src = `/frames/${f.filename}`;
+    renderFrameThumbs();
+  }
+  async function handleFrameUpload(files) {
+    try {
+      let added = 0;
+      for (const file of files) {
+        if (file.type && file.type !== "image/png") { toast("Frames must be PNG.", true); continue; }
+        const up = await fileToUpload(file);
+        const frame = await api("POST", "/api/frames", up);
+        presetsData.frames = presetsData.frames || [];
+        presetsData.frames.push(frame);
+        if (exportState) exportState.frames.push(frame);
+        added++;
+      }
+      if (exportState) renderFrameThumbs();
+      if (added) toast(`Added ${added} frame${added === 1 ? "" : "s"}.`);
+    } catch (e) { toast(e.message, true); }
+  }
+  async function handleFrameDelete(id) {
+    try {
+      await api("DELETE", `/api/frames/${id}`);
+      presetsData.frames = (presetsData.frames || []).filter((f) => f.id !== id);
+      if (exportState) {
+        exportState.frames = exportState.frames.filter((f) => f.id !== id);
+        if (exportState.selectedFrameId === id) { exportState.selectedFrameId = null; exportState.frameImg = null; }
+        renderFrameThumbs(); recompose();
+      }
+    } catch (e) { toast(e.message, true); }
+  }
+  // ----- compose + export -----
+  function exportOutputSize() {
+    const st = exportState;
+    if (st.outW > 0 && st.outH > 0) return [st.outW, st.outH];
+    return [Math.max(1, Math.round(st.crop.w)), Math.max(1, Math.round(st.crop.h))];
+  }
+  function recompose(final = false) {
+    const st = exportState; if (!st || !st.natW) return;
+    const [W, H] = exportOutputSize();
+    const cv = $("#exportPreview"); cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d");
+    const c = final
+      ? [Math.round(st.crop.x), Math.round(st.crop.y), Math.max(1, Math.round(st.crop.w)), Math.max(1, Math.round(st.crop.h))]
+      : [st.crop.x, st.crop.y, st.crop.w, st.crop.h];
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(st.img, c[0], c[1], c[2], c[3], 0, 0, W, H);
+    if (st.frameImg) ctx.drawImage(st.frameImg, 0, 0, W, H);
+    $("#exportInfo").textContent = (st.outW > 0 ? "Preview" : "Preview (crop size)") + ` — ${W}×${H}`;
+  }
+  function scheduleRecompose() {
+    const st = exportState; if (!st || st.rafPending) return;
+    st.rafPending = true;
+    requestAnimationFrame(() => { if (exportState) { exportState.rafPending = false; recompose(); } });
+  }
+  function doExport() {
+    const st = exportState; if (!st || !st.natW) return;
+    recompose(true);
+    let dataUrl;
+    try { dataUrl = $("#exportPreview").toDataURL("image/png"); }
+    catch { toast("Canvas is tainted; cannot export.", true); return; }
+    const [W, H] = exportOutputSize();
+    const name = currentSub()?.name || "export";
+    const a = el("a", { href: dataUrl, download: `${name.replace(/\s+/g, "_")}-${W}x${H}.png` });
+    document.body.append(a); a.click(); a.remove();
+    $("#exportStatus").textContent = "Downloaded. Saving to disk…";
+    api("POST", "/api/export", { name, dataBase64: dataUrl.split(",")[1] })
+      .then((r) => { $("#exportStatus").textContent = r.savedAs ? `Saved: data/exports/${r.savedAs}` : "Saved."; if (r.savedAs) logMsg(`Exported to data/exports/${r.savedAs}`, "success"); toast("Exported."); })
+      .catch((e) => { $("#exportStatus").textContent = "Downloaded; disk save failed."; toast(e.message, true); logMsg("Export save failed: " + e.message, "error"); });
+  }
+
   // ---------------- wire up events ----------------
   $("#presetSelect").addEventListener("change", () => {
     selectedPresetId = $("#presetSelect").value;
@@ -887,9 +1209,19 @@
   $("#presetName").addEventListener("input", () => { if (editorDraft) editorDraft.name = $("#presetName").value; });
   $("#editorBackdrop").addEventListener("click", (e) => { if (e.target === $("#editorBackdrop")) closeEditor(); });
 
+  $("#prepareExportBtn").addEventListener("click", openExportModal);
+  $("#exportClose").addEventListener("click", closeExportModal);
+  $("#exportCancel").addEventListener("click", closeExportModal);
+  $("#exportDoBtn").addEventListener("click", doExport);
+  $("#cropBox").addEventListener("pointerdown", onCropPointerDown);
+  $("#exportBackdrop").addEventListener("click", (e) => { if (e.target === $("#exportBackdrop")) closeExportModal(); });
+
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doGenerate(); }
-    if (e.key === "Escape" && !$("#editorBackdrop").hidden) closeEditor();
+    if (e.key === "Escape") {
+      if (!$("#exportBackdrop").hidden) closeExportModal();
+      else if (!$("#editorBackdrop").hidden) closeEditor();
+    }
   });
 
   // ---------------- init ----------------

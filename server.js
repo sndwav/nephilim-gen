@@ -11,6 +11,8 @@ const PORT = 5173;
 const DATA_DIR = path.join(__dirname, "data");
 const REFS_DIR = path.join(DATA_DIR, "references");
 const OUTPUTS_DIR = path.join(DATA_DIR, "outputs");
+const FRAMES_DIR = path.join(DATA_DIR, "frames");
+const EXPORTS_DIR = path.join(DATA_DIR, "exports");
 const PRESETS_FILE = path.join(DATA_DIR, "presets.json");
 
 const SEED = {
@@ -30,6 +32,8 @@ const SEED = {
       model: "gemini-3.1-flash-image",
       aspectRatio: "1:1",
       resolution: "2K",
+      exportWidth: 64,
+      exportHeight: 64,
     }],
   }],
 };
@@ -38,6 +42,8 @@ const SEED = {
 async function ensureSetup() {
   await fs.mkdir(REFS_DIR, { recursive: true });
   await fs.mkdir(OUTPUTS_DIR, { recursive: true });
+  await fs.mkdir(FRAMES_DIR, { recursive: true });
+  await fs.mkdir(EXPORTS_DIR, { recursive: true });
   try { await fs.access(PRESETS_FILE); }
   catch { await fs.writeFile(PRESETS_FILE, JSON.stringify(SEED, null, 2)); }
 }
@@ -197,8 +203,53 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
+// ---------- frames (global overlay PNGs) ----------
+// body: { name, mimeType, dataBase64 }  — PNG only (transparency required)
+app.post("/api/frames", async (req, res) => {
+  const { name, mimeType, dataBase64 } = req.body;
+  if (!dataBase64) return res.status(400).json({ error: "Missing image data." });
+  if (mimeType && mimeType !== "image/png")
+    return res.status(400).json({ error: "Frames must be PNG (transparency required)." });
+  const data = await readPresets();
+  const id = crypto.randomUUID();
+  const filename = `${id}.png`;
+  await fs.mkdir(FRAMES_DIR, { recursive: true });
+  await fs.writeFile(path.join(FRAMES_DIR, filename), Buffer.from(dataBase64, "base64"));
+  const frame = { id, filename, originalName: name || filename };
+  data.frames = data.frames || [];
+  data.frames.push(frame);
+  await writePresets(data);
+  res.json(frame);                                // thumbnail URL: /frames/<filename>
+});
+app.delete("/api/frames/:id", async (req, res) => {
+  const data = await readPresets();
+  const frame = (data.frames || []).find((f) => f.id === req.params.id);
+  if (frame) {
+    await fs.rm(path.join(FRAMES_DIR, frame.filename), { force: true });
+    data.frames = data.frames.filter((f) => f.id !== req.params.id);
+    await writePresets(data);
+  }
+  res.json({ ok: true });
+});
+
+// ---------- export (save the composed PNG to disk) ----------
+// body: { name, dataBase64 }  (composed PNG, base64 without the data: prefix)
+app.post("/api/export", async (req, res) => {
+  try {
+    const { name, dataBase64 } = req.body;
+    if (!dataBase64) return res.status(400).json({ error: "Missing image data." });
+    const outName = `${Date.now()}-${(name || "export").replace(/\W+/g, "_")}.png`;
+    await fs.mkdir(EXPORTS_DIR, { recursive: true });
+    await fs.writeFile(path.join(EXPORTS_DIR, outName), Buffer.from(dataBase64, "base64"));
+    res.json({ savedAs: outName });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Export save failed." });
+  }
+});
+
 // ---------- static files ----------
 app.use("/references", express.static(REFS_DIR));
+app.use("/frames", express.static(FRAMES_DIR));
 app.use(express.static(path.join(__dirname, "public")));
 
 await ensureSetup();
