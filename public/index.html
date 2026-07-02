@@ -1241,14 +1241,15 @@
   $("#deletePresetBtn").addEventListener("click", deletePreset);
   $("#addSubBtn").addEventListener("click", addSubPreset);
   $("#presetName").addEventListener("input", () => { if (editorDraft) editorDraft.name = $("#presetName").value; });
-  $("#editorBackdrop").addEventListener("click", (e) => { if (e.target === $("#editorBackdrop")) closeEditor(); });
+  // Backdrop clicks intentionally do NOT close the modal — a text-selection drag that ends
+  // on the backdrop would otherwise fire a click on it. Close via ✕, Close, Save, or Esc.
 
   $("#prepareExportBtn").addEventListener("click", openExportModal);
   $("#exportClose").addEventListener("click", closeExportModal);
   $("#exportCancel").addEventListener("click", closeExportModal);
   $("#exportDoBtn").addEventListener("click", doExport);
   $("#cropBox").addEventListener("pointerdown", onCropPointerDown);
-  $("#exportBackdrop").addEventListener("click", (e) => { if (e.target === $("#exportBackdrop")) closeExportModal(); });
+  // Backdrop clicks intentionally do NOT close the modal (see editor note above). Use ✕, Close, or Esc.
 
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doGenerate(); }
