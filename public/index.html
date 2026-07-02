@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Game Image Generator</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c232d;
+    --panel-3: #232c38;
+    --border: #2a323d;
+    --border-2: #384252;
+    --text: #e6e9ee;
+    --muted: #9aa4b2;
+    --muted-2: #6b7482;
+    --accent: #7c9cff;
+    --accent-2: #5b7cff;
+    --accent-ink: #0b1020;
+    --danger: #ff6b6b;
+    --danger-bg: #3a1f24;
+    --ok: #57d38c;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 10px 40px rgba(0,0,0,.45);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: radial-gradient(1200px 800px at 15% -10%, #182231 0%, var(--bg) 55%) fixed;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1, h2, h3 { margin: 0; font-weight: 650; }
+  kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--panel-3);
+    border: 1px solid var(--border-2);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+  }
+
+  /* ---------- layout ---------- */
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 18px;
+    height: 100vh;
+    padding: 18px;
+  }
+  .pane {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: auto;
+  }
+  .pane.left { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .pane.right { display: flex; flex-direction: column; }
+
+  /* ---------- brand ---------- */
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 10px; flex: none;
+    display: grid; place-items: center; font-size: 18px; color: var(--accent-ink);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px rgba(92,124,255,.35);
+  }
+  .brand h1 { font-size: 16px; }
+  .brand .sub { margin: 0; color: var(--muted); font-size: 12px; }
+
+  /* ---------- fields ---------- */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > span { font-size: 12px; color: var(--muted); font-weight: 550; letter-spacing: .01em; }
+  .field > span em { color: var(--muted-2); font-style: normal; }
+  .row { display: flex; gap: 10px; align-items: flex-end; }
+  .grow { flex: 1; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
+    font: inherit;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  textarea { resize: vertical; min-height: 60px; line-height: 1.45; }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--accent-2);
+    box-shadow: 0 0 0 3px rgba(92,124,255,.18);
+  }
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%239aa4b2' d='M2 4l4 4 4-4z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+    cursor: pointer;
+  }
+  .field-hint { font-size: 11px; color: var(--muted-2); }
+  .warn { font-size: 11px; color: #ffcf70; min-height: 14px; }
+
+  .meta-line {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 12px; color: var(--muted);
+    margin-top: -6px;
+  }
+  .meta-line .tag {
+    background: var(--panel-3); border: 1px solid var(--border-2);
+    padding: 2px 8px; border-radius: 999px; color: var(--text); font-weight: 550;
+  }
+  .meta-line .dot { color: var(--muted-2); }
+
+  .prompt-preview {
+    margin: 0;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 11px 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #c7d0dc;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 220px;
+    overflow: auto;
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    appearance: none; border: 1px solid var(--border-2);
+    background: var(--panel-3); color: var(--text);
+    border-radius: var(--radius-sm); padding: 9px 14px;
+    font: inherit; font-weight: 550; cursor: pointer;
+    transition: filter .15s, background .15s, border-color .15s, opacity .15s;
+    white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn:hover { filter: brightness(1.12); }
+  .btn:active { transform: translateY(1px); }
+  .btn.ghost { background: transparent; }
+  .btn.ghost:hover { background: var(--panel-3); }
+  .btn.small { padding: 6px 10px; font-size: 12px; }
+  .btn.primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent; color: var(--accent-ink); font-weight: 650;
+  }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.danger { color: var(--danger); border-color: #5a2b30; }
+  .btn.danger:hover { background: var(--danger-bg); }
+  .btn:disabled, .btn.disabled {
+    opacity: .45; cursor: not-allowed; filter: none; transform: none;
+  }
+  .btn.generate { padding: 13px; font-size: 15px; margin-top: 2px; }
+  .hint { margin: 0; font-size: 12px; color: var(--muted-2); text-align: center; }
+  .icon-btn {
+    appearance: none; background: transparent; border: none; color: var(--muted);
+    font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 6px; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--panel-3); color: var(--text); }
+  .spacer { flex: 1; }
+
+  /* ---------- right pane / preview ---------- */
+  .preview {
+    flex: 1; min-height: 0; margin: 16px; border-radius: var(--radius);
+    border: 1px dashed var(--border-2);
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 20px; overflow: auto; position: relative;
+    background: var(--panel);
+  }
+  .preview.has-image { border-style: solid; border-color: var(--border); }
+  .preview img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  .preview .empty-ill { font-size: 46px; opacity: .5; margin-bottom: 8px; }
+  .preview .empty-title { font-weight: 600; color: var(--text); }
+  .preview .empty-text { color: var(--muted); font-size: 13px; max-width: 340px; margin-top: 4px; }
+  .spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 3px solid var(--border-2); border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite; margin-bottom: 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--muted); }
+  .loading-sub { color: var(--muted-2); font-size: 12px; margin-top: 4px; }
+
+  .error-box {
+    max-width: 420px; text-align: left;
+    background: var(--danger-bg); border: 1px solid #5a2b30;
+    border-radius: var(--radius-sm); padding: 14px 16px; color: #ffd7d7;
+  }
+  .error-box .error-title { font-weight: 650; color: #ff9c9c; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
+  .error-box .error-msg { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+
+  .preview-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .model-badge { font-size: 12px; color: var(--muted); }
+
+  /* ---------- message log ---------- */
+  .log {
+    display: flex; flex-direction: column;
+    flex: none;
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  .log-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 16px; font-size: 11px; color: var(--muted-2);
+    text-transform: uppercase; letter-spacing: .06em; font-weight: 650;
+  }
+  .log-clear { font-size: 11px; padding: 2px 8px; text-transform: none; letter-spacing: 0; }
+  .log-body {
+    height: calc(4 * 1.65em + 10px);   /* room for ~4 log lines, then scroll */
+    overflow-y: auto;
+    padding: 0 16px 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.65;
+  }
+  .log-line { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+  .log-line .log-time { color: var(--muted-2); margin-right: 8px; }
+  .log-line.success { color: var(--ok); }
+  .log-line.error { color: #ff9c9c; }
+  .log-empty { color: var(--muted-2); font-style: italic; padding: 4px 0; }
+
+  /* ---------- modal editor ---------- */
+  .modal-backdrop[hidden] { display: none; }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(5,8,12,.66);
+    backdrop-filter: blur(3px);
+    display: grid; place-items: center; padding: 24px; z-index: 50;
+  }
+  .modal {
+    width: min(720px, 100%); max-height: calc(100vh - 48px);
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px; border-bottom: 1px solid var(--border);
+  }
+  .modal-head h2 { font-size: 15px; }
+  .modal-body { padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 16px; }
+  .modal-foot {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
+  }
+
+  .subpreset-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .chip {
+    appearance: none; border: 1px solid var(--border-2); background: var(--panel-2);
+    color: var(--muted); border-radius: 999px; padding: 6px 13px; font: inherit;
+    font-size: 12px; font-weight: 550; cursor: pointer; transition: all .15s;
+  }
+  .chip:hover { color: var(--text); }
+  .chip.active { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+  #subEditor { display: flex; flex-direction: column; gap: 14px; }
+  .sub-del { margin-top: 2px; }
+  .empty-hint { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+
+  /* ---------- reference thumbnails ---------- */
+  .thumbs {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 10px;
+  }
+  .thumb {
+    position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border-2); background: var(--panel-2);
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb-rm {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+    border-radius: 6px; border: none; cursor: pointer; line-height: 1;
+    background: rgba(10,12,16,.78); color: #fff; font-size: 12px;
+    display: grid; place-items: center;
+  }
+  .thumb-rm:hover { background: var(--danger); }
+  .thumb.add {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    cursor: pointer; color: var(--muted); border-style: dashed;
+    transition: border-color .15s, color .15s;
+  }
+  .thumb.add:hover { border-color: var(--accent); color: var(--accent); }
+  .thumb.add .plus { font-size: 22px; line-height: 1; }
+  .thumb.add .add-label { font-size: 11px; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+    background: var(--panel-3); border: 1px solid var(--border-2); color: var(--text);
+    padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: all .2s; z-index: 100; font-size: 13px; max-width: 80vw;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { border-color: #5a2b30; color: #ffd7d7; }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    .pane.right { min-height: 60vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- ============ LEFT: CONTROLS ============ -->
+    <section class="pane left">
+      <div class="brand">
+        <div class="logo">◆</div>
+        <div>
+          <h1>Game Image Generator</h1>
+          <p class="sub">Local Gemini image studio</p>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="field grow">
+          <span>Preset</span>
+          <select id="presetSelect"></select>
+        </label>
+        <button class="btn ghost" id="newPresetBtn" title="Create a new preset">+ New</button>
+      </div>
+
+      <div class="row">
+        <label class="field grow">
+          <span>Sub-preset</span>
+          <select id="subSelect"></select>
+        </label>
+        <button class="btn ghost" id="editBtn" title="Edit this preset">Edit</button>
+      </div>
+
+      <div class="meta-line" id="subMeta"></div>
+
+      <label class="field">
+        <span>Subject</span>
+        <textarea id="subject" rows="3" placeholder="e.g. three enemy silhouettes in glowing chains"></textarea>
+      </label>
+
+      <label class="field">
+        <span>Prompt preview <em>(read-only)</em></span>
+        <pre class="prompt-preview" id="promptPreview">—</pre>
+      </label>
+
+      <button class="btn primary generate" id="generateBtn" disabled>Generate</button>
+      <p class="hint">Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to generate</p>
+    </section>
+
+    <!-- ============ RIGHT: PREVIEW ============ -->
+    <section class="pane right">
+      <div class="preview" id="preview"></div>
+      <div class="preview-bar">
+        <div class="model-badge" id="modelBadge"></div>
+        <div class="spacer"></div>
+        <a class="btn ghost disabled" id="downloadBtn" download>Download</a>
+        <button class="btn ghost" id="copyPromptBtn" disabled>Copy prompt</button>
+      </div>
+      <div class="log">
+        <div class="log-head">
+          <span>Log</span>
+          <button class="icon-btn log-clear" id="logClear" title="Clear log">Clear</button>
+        </div>
+        <div class="log-body" id="logBody" aria-live="polite"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ EDITOR MODAL ============ -->
+  <div class="modal-backdrop" id="editorBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <div class="modal-head">
+        <h2 id="editorTitle">Edit preset</h2>
+        <button class="icon-btn" id="editorClose" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>Preset name</span>
+          <input type="text" id="presetName" placeholder="e.g. Icon" />
+        </label>
+
+        <div class="subpreset-bar">
+          <div class="chips" id="subChips"></div>
+          <button class="btn ghost small" id="addSubBtn">+ Add sub-preset</button>
+        </div>
+
+        <div id="subEditor"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn danger ghost" id="deletePresetBtn">Delete preset</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="editorCancel">Close</button>
+        <button class="btn primary" id="editorSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  // ---------------- constants ----------------
+  const MODEL_NAMES = {
+    "gemini-3.1-flash-image": "Nano Banana 2",
+    "gemini-3-pro-image": "Nano Banana Pro",
+    "gemini-2.5-flash-image": "Nano Banana (legacy)",
+  };
+  const MODELS = [
+    ["gemini-3.1-flash-image", "Nano Banana 2 (default) — fast, up to 14 refs, 512/1K/2K/4K"],
+    ["gemini-3-pro-image", "Nano Banana Pro — highest quality, best text"],
+    ["gemini-2.5-flash-image", "Nano Banana (legacy) — cheaper, 1K only"],
+  ];
+  const ASPECTS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+  const RESOLUTIONS = ["512", "1K", "2K", "4K"];
+
+  // ---------------- tiny helpers ----------------
+  const $ = (sel) => document.querySelector(sel);
+  function el(tag, props = {}, ...children) {
+    const n = document.createElement(tag);
+    Object.assign(n, props);
+    for (const c of children) if (c != null) n.append(c);
+    return n;
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0, v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+  async function api(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const ct = res.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await res.json() : await res.text();
+    if (!res.ok) {
+      const msg = (data && data.error) || (typeof data === "string" && data) || `Request failed (${res.status}).`;
+      throw new Error(msg);
+    }
+    return data;
+  }
+  // mirror of the server's injection, for the live prompt preview
+  function injectSubject(template, subject) {
+    const s = subject.trim();
+    return template.includes("{{subject}}")
+      ? template.replaceAll("{{subject}}", s)
+      : `${template.trim()}\nSubject: ${s}.`;
+  }
+  // read a chosen file into base64 for upload
+  function fileToUpload(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result);           // "data:image/png;base64,AAAA..."
+        resolve({ name: file.name, mimeType: file.type || "image/png", dataBase64: dataUrl.split(",")[1] });
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  let toastTimer = null;
+  function toast(msg, isError = false) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.className = "toast show" + (isError ? " error" : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.className = "toast"), 2800);
+  }
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Prompt copied to clipboard.");
+    } catch {
+      const ta = el("textarea", { value: text });
+      ta.style.cssText = "position:fixed;opacity:0;top:0";
+      document.body.append(ta);
+      ta.select();
+      try { document.execCommand("copy"); toast("Prompt copied to clipboard."); }
+      catch { toast("Could not copy.", true); }
+      ta.remove();
+    }
+  }
+
+  // ---------------- state ----------------
+  let presetsData = { presets: [] };
+  let selectedPresetId = null;
+  let selectedSubId = null;
+  let isGenerating = false;
+  let lastResult = null;
+
+  let editorDraft = null;
+  let editorSubIndex = 0;
+
+  const currentPreset = () => presetsData.presets.find((p) => p.id === selectedPresetId) || null;
+  const currentSub = () => (currentPreset()?.subPresets || []).find((s) => s.id === selectedSubId) || null;
+
+  // ---------------- main render ----------------
+  async function loadPresets() {
+    presetsData = await api("GET", "/api/presets");
+    if (!presetsData.presets.find((p) => p.id === selectedPresetId)) {
+      selectedPresetId = presetsData.presets[0]?.id || null;
+    }
+    const preset = currentPreset();
+    if (!preset?.subPresets.find((s) => s.id === selectedSubId)) {
+      selectedSubId = preset?.subPresets[0]?.id || null;
+    }
+    renderMain();
+  }
+  function renderMain() {
+    renderPresetSelect();
+    renderSubSelect();
+    updateSubMeta();
+    updatePromptPreview();
+    updateModelBadge();
+    updateGenerateState();
+  }
+  function renderPresetSelect() {
+    const sel = $("#presetSelect");
+    sel.innerHTML = "";
+    if (!presetsData.presets.length) {
+      sel.append(el("option", { value: "", textContent: "— no presets —" }));
+      return;
+    }
+    for (const p of presetsData.presets)
+      sel.append(el("option", { value: p.id, textContent: p.name, selected: p.id === selectedPresetId }));
+    sel.value = selectedPresetId || "";
+  }
+  function renderSubSelect() {
+    const sel = $("#subSelect");
+    sel.innerHTML = "";
+    const subs = currentPreset()?.subPresets || [];
+    if (!subs.length) {
+      sel.append(el("option", { value: "", textContent: "— no sub-presets —" }));
+      return;
+    }
+    for (const s of subs)
+      sel.append(el("option", { value: s.id, textContent: s.name, selected: s.id === selectedSubId }));
+    sel.value = selectedSubId || "";
+  }
+  function updateSubMeta() {
+    const meta = $("#subMeta");
+    meta.innerHTML = "";
+    const s = currentSub();
+    if (!s) { meta.textContent = "Create or pick a sub-preset to begin."; return; }
+    const refCount = (s.referenceImages || []).length;
+    meta.append(
+      el("span", { className: "tag", textContent: MODEL_NAMES[s.model] || s.model }),
+      el("span", { className: "dot", textContent: "•" }),
+      el("span", { textContent: `${s.aspectRatio} · ${s.resolution}` }),
+      el("span", { className: "dot", textContent: "•" }),
+      el("span", { textContent: `${refCount} reference${refCount === 1 ? "" : "s"}` }),
+    );
+  }
+  function updatePromptPreview() {
+    const s = currentSub();
+    const subject = $("#subject").value;
+    $("#promptPreview").textContent = !s ? "—" : (subject.trim() ? injectSubject(s.promptTemplate, subject) : s.promptTemplate);
+  }
+  function updateModelBadge() {
+    const s = currentSub();
+    $("#modelBadge").textContent = s ? `Model: ${MODEL_NAMES[s.model] || s.model}` : "";
+  }
+  function updateGenerateState() {
+    const s = currentSub();
+    const hasSubject = $("#subject").value.trim().length > 0;
+    $("#generateBtn").disabled = isGenerating || !s || !hasSubject;
+    $("#generateBtn").textContent = isGenerating ? "Generating…" : "Generate";
+  }
+
+  // ---------------- preview states ----------------
+  function showEmpty() {
+    const p = $("#preview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", {},
+        el("div", { className: "empty-ill", textContent: "🖼️" }),
+        el("div", { className: "empty-title", textContent: "Your image will appear here" }),
+        el("div", { className: "empty-text", textContent: "Pick a preset, type a subject, and hit Generate." }),
+      ),
+    );
+  }
+  function showLoading() {
+    const p = $("#preview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", {},
+        el("div", { className: "spinner" }),
+        el("div", { className: "loading-text", textContent: "Generating…" }),
+        el("div", { className: "loading-sub", textContent: "This can take 30–60s for large sizes or Nano Banana Pro." }),
+      ),
+    );
+  }
+  function showError(msg) {
+    const p = $("#preview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", { className: "error-box" },
+        el("div", { className: "error-title" }, el("span", { textContent: "⚠" }), el("span", { textContent: "Generation failed" })),
+        el("div", { className: "error-msg", textContent: msg }),
+      ),
+    );
+  }
+  function showImage(data) {
+    const p = $("#preview"); p.className = "preview has-image"; p.innerHTML = "";
+    p.append(el("img", { src: data.imageDataUrl, alt: "Generated image" }));
+  }
+  function setResultButtons(enabled) {
+    const dl = $("#downloadBtn"), cp = $("#copyPromptBtn");
+    dl.classList.toggle("disabled", !enabled);
+    cp.disabled = !enabled;
+    if (!enabled) dl.removeAttribute("href");
+  }
+
+  // ---------------- message log ----------------
+  function logMsg(text, kind = "") {
+    const body = $("#logBody");
+    const empty = body.querySelector(".log-empty");
+    if (empty) empty.remove();
+    body.append(el("div", { className: "log-line " + kind },
+      el("span", { className: "log-time", textContent: new Date().toLocaleTimeString() }),
+      el("span", { textContent: text }),
+    ));
+    body.scrollTop = body.scrollHeight;
+  }
+  function clearLog() {
+    const body = $("#logBody");
+    body.innerHTML = "";
+    body.append(el("div", { className: "log-empty", textContent: "No messages yet." }));
+  }
+
+  // ---------------- generate ----------------
+  async function doGenerate() {
+    const s = currentSub();
+    const subject = $("#subject").value.trim();
+    if (!s || !subject || isGenerating) return;
+    isGenerating = true; updateGenerateState();
+    setResultButtons(false);
+    showLoading();
+    logMsg(`Generating "${subject}" · ${MODEL_NAMES[s.model] || s.model} · ${s.aspectRatio} ${s.resolution}…`);
+    try {
+      const data = await api("POST", "/api/generate", { subPresetId: s.id, subject });
+      lastResult = data;
+      showImage(data);
+      $("#downloadBtn").href = data.imageDataUrl;
+      $("#downloadBtn").download = data.savedAs || "generated.png";
+      $("#modelBadge").textContent = `Model: ${MODEL_NAMES[data.model] || data.model}`;
+      setResultButtons(true);
+      if (data.savedAs) logMsg(`Saved to data/outputs/${data.savedAs}`, "success");
+    } catch (e) {
+      lastResult = null;
+      showError(e.message || "Image generation failed.");
+      setResultButtons(false);
+      logMsg(`Failed: ${e.message || "Image generation failed."}`, "error");
+    } finally {
+      isGenerating = false; updateGenerateState();
+    }
+  }
+
+  // ---------------- editor ----------------
+  function field(labelText, inputEl) {
+    return el("label", { className: "field" }, el("span", { textContent: labelText }), inputEl);
+  }
+  function selectFrom(pairs, value) {
+    const sel = el("select");
+    for (const [v, label] of pairs) sel.append(el("option", { value: v, textContent: label, selected: v === value }));
+    sel.value = value;
+    return sel;
+  }
+  function openNewPreset() {
+    api("POST", "/api/presets", { name: "New Preset" })
+      .then(async (p) => { await loadPresets(); selectedPresetId = p.id; openEditor(p.id, true); })
+      .catch((e) => toast(e.message, true));
+  }
+  function openEditor(presetId, isNew = false) {
+    const p = presetsData.presets.find((x) => x.id === presetId);
+    if (!p) { toast("Select a preset to edit.", true); return; }
+    editorDraft = clone(p);
+    editorDraft.__isNew = isNew;
+    editorSubIndex = 0;
+    if (!editorDraft.subPresets.length) addSubPreset();   // start with one for convenience
+    else renderEditor();
+    $("#editorBackdrop").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => $("#presetName").focus(), 30);
+  }
+  async function closeEditor() {
+    $("#editorBackdrop").hidden = true;
+    document.body.style.overflow = "";
+    editorDraft = null;
+    await loadPresets();   // sync any persisted changes (references / auto-saves)
+  }
+  function renderEditor() {
+    $("#editorTitle").textContent = editorDraft.__isNew ? "New preset" : "Edit preset";
+    $("#presetName").value = editorDraft.name || "";
+    renderSubChips();
+    renderSubEditor();
+  }
+  function renderSubChips() {
+    const wrap = $("#subChips"); wrap.innerHTML = "";
+    editorDraft.subPresets.forEach((s, i) => {
+      wrap.append(el("button", {
+        className: "chip" + (i === editorSubIndex ? " active" : ""),
+        textContent: s.name || "Untitled",
+        onclick: () => { editorSubIndex = i; renderEditor(); },
+      }));
+    });
+  }
+  function renderSubEditor() {
+    const host = $("#subEditor"); host.innerHTML = "";
+    const subs = editorDraft.subPresets;
+    if (!subs.length) {
+      host.append(el("p", { className: "empty-hint", textContent: 'No sub-presets yet. Click "+ Add sub-preset".' }));
+      return;
+    }
+    editorSubIndex = Math.max(0, Math.min(editorSubIndex, subs.length - 1));
+    const s = subs[editorSubIndex];
+
+    // name
+    const nameInput = el("input", { type: "text", value: s.name || "", placeholder: "e.g. Ability Icon" });
+    nameInput.addEventListener("input", () => { s.name = nameInput.value; renderSubChips(); });
+    host.append(field("Sub-preset name", nameInput));
+
+    // template + {{subject}} warning
+    const ta = el("textarea", { rows: 7, value: s.promptTemplate || "" });
+    const warn = el("div", { className: "warn" });
+    const syncWarn = () => warn.textContent = ta.value.includes("{{subject}}") ? "" : "⚠ No {{subject}} token — the subject will be appended at the end.";
+    ta.addEventListener("input", () => { s.promptTemplate = ta.value; syncWarn(); });
+    const tf = field("Prompt template", ta);
+    tf.append(el("div", { className: "field-hint", textContent: "Place {{subject}} where the typed subject should be inserted." }), warn);
+    syncWarn();
+    host.append(tf);
+
+    // model / aspect / resolution
+    const modelSel = selectFrom(MODELS, s.model);
+    modelSel.addEventListener("change", () => { s.model = modelSel.value; });
+    const aspSel = selectFrom(ASPECTS.map((a) => [a, a]), s.aspectRatio);
+    aspSel.addEventListener("change", () => { s.aspectRatio = aspSel.value; });
+    const resSel = selectFrom(RESOLUTIONS.map((r) => [r, r]), s.resolution);
+    resSel.addEventListener("change", () => { s.resolution = resSel.value; });
+    const row = el("div", { className: "grid3" });
+    row.append(field("Model", modelSel), field("Aspect ratio", aspSel), field("Resolution", resSel));
+    host.append(row);
+
+    // references
+    host.append(renderRefManager(s));
+
+    // delete sub-preset
+    host.append(el("div", { className: "sub-del" },
+      el("button", { className: "btn danger ghost small", textContent: "Delete sub-preset", onclick: deleteSubPreset })));
+  }
+  function renderRefManager(s) {
+    const refs = s.referenceImages || [];
+    const box = el("div", { className: "field" });
+    box.append(el("span", { textContent: `Reference images (${refs.length})` }));
+
+    const grid = el("div", { className: "thumbs" });
+    for (const ref of refs) {
+      grid.append(el("div", { className: "thumb" },
+        el("img", { src: `/references/${s.id}/${ref.filename}`, alt: ref.originalName, title: ref.originalName }),
+        el("button", { className: "thumb-rm", textContent: "✕", title: "Remove", onclick: () => handleRefDelete(ref.id) }),
+      ));
+    }
+    const fileInput = el("input", { type: "file", accept: "image/*", multiple: true });
+    fileInput.style.display = "none";
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files?.length) handleRefUpload([...fileInput.files]);
+      fileInput.value = "";
+    });
+    grid.append(el("label", { className: "thumb add", title: "Add images" },
+      el("span", { className: "plus", textContent: "+" }),
+      el("span", { className: "add-label", textContent: "Add" }),
+      fileInput,
+    ));
+    box.append(grid);
+    box.append(el("div", { className: "field-hint", textContent: "Nano Banana 2 uses up to 14 reference images. These define the style sent to the model." }));
+    return box;
+  }
+  function addSubPreset() {
+    editorDraft.subPresets.push({
+      id: uuid(),
+      name: "New Sub-preset",
+      promptTemplate: "Following the provided references, generate: {{subject}}.",
+      referenceImages: [],
+      model: "gemini-3.1-flash-image",
+      aspectRatio: "1:1",
+      resolution: "2K",
+    });
+    editorSubIndex = editorDraft.subPresets.length - 1;
+    renderEditor();
+  }
+  function deleteSubPreset() {
+    const subs = editorDraft.subPresets;
+    if (!subs.length) return;
+    const s = subs[editorSubIndex];
+    if (!confirm(`Delete sub-preset "${s.name || "Untitled"}"? This is applied when you Save.`)) return;
+    subs.splice(editorSubIndex, 1);
+    editorSubIndex = Math.max(0, editorSubIndex - 1);
+    renderEditor();
+  }
+  // PUT the current draft so the preset & its sub-presets exist server-side (needed before reference ops)
+  async function ensureSaved() {
+    const payload = clone(editorDraft); delete payload.__isNew;
+    const saved = await api("PUT", `/api/presets/${payload.id}`, payload);
+    editorDraft = clone(saved);
+    editorDraft.__isNew = false;
+  }
+  async function handleRefUpload(files) {
+    try {
+      await ensureSaved();
+      const s = editorDraft.subPresets[editorSubIndex];
+      for (const file of files) {
+        const up = await fileToUpload(file);
+        const ref = await api("POST", "/api/references", { subPresetId: s.id, ...up });
+        s.referenceImages = s.referenceImages || [];
+        s.referenceImages.push(ref);
+      }
+      renderEditor();
+      toast(`Added ${files.length} image${files.length === 1 ? "" : "s"}.`);
+    } catch (e) { toast(e.message, true); }
+  }
+  async function handleRefDelete(refId) {
+    try {
+      const s = editorDraft.subPresets[editorSubIndex];
+      await api("DELETE", `/api/references/${s.id}/${refId}`);
+      s.referenceImages = (s.referenceImages || []).filter((r) => r.id !== refId);
+      renderEditor();
+    } catch (e) { toast(e.message, true); }
+  }
+  async function saveEditor() {
+    try {
+      const payload = clone(editorDraft); delete payload.__isNew;
+      if (!payload.name?.trim()) payload.name = "Untitled preset";
+      const keepId = payload.id;
+      await api("PUT", `/api/presets/${keepId}`, payload);
+      selectedPresetId = keepId;
+      await closeEditor();
+      const preset = currentPreset();
+      if (!preset?.subPresets.find((s) => s.id === selectedSubId)) selectedSubId = preset?.subPresets[0]?.id || null;
+      renderMain();
+      toast("Preset saved.");
+    } catch (e) { toast(e.message, true); }
+  }
+  async function deletePreset() {
+    if (!confirm("Delete this preset, its sub-presets, and all their reference images?")) return;
+    try {
+      const id = editorDraft.id;
+      await api("DELETE", `/api/presets/${id}`);
+      if (selectedPresetId === id) selectedPresetId = null;
+      await closeEditor();
+      toast("Preset deleted.");
+    } catch (e) { toast(e.message, true); }
+  }
+
+  // ---------------- wire up events ----------------
+  $("#presetSelect").addEventListener("change", () => {
+    selectedPresetId = $("#presetSelect").value;
+    selectedSubId = currentPreset()?.subPresets[0]?.id || null;
+    renderMain();
+  });
+  $("#subSelect").addEventListener("change", () => {
+    selectedSubId = $("#subSelect").value;
+    updateSubMeta(); updatePromptPreview(); updateModelBadge(); updateGenerateState();
+  });
+  $("#subject").addEventListener("input", () => { updatePromptPreview(); updateGenerateState(); });
+  $("#generateBtn").addEventListener("click", doGenerate);
+  $("#newPresetBtn").addEventListener("click", openNewPreset);
+  $("#editBtn").addEventListener("click", () => openEditor(selectedPresetId, false));
+  $("#copyPromptBtn").addEventListener("click", () => { if (lastResult) copyText(lastResult.promptUsed); });
+  $("#downloadBtn").addEventListener("click", (e) => { if (!lastResult) e.preventDefault(); });
+  $("#logClear").addEventListener("click", clearLog);
+
+  $("#editorClose").addEventListener("click", closeEditor);
+  $("#editorCancel").addEventListener("click", closeEditor);
+  $("#editorSave").addEventListener("click", saveEditor);
+  $("#deletePresetBtn").addEventListener("click", deletePreset);
+  $("#addSubBtn").addEventListener("click", addSubPreset);
+  $("#presetName").addEventListener("input", () => { if (editorDraft) editorDraft.name = $("#presetName").value; });
+  $("#editorBackdrop").addEventListener("click", (e) => { if (e.target === $("#editorBackdrop")) closeEditor(); });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doGenerate(); }
+    if (e.key === "Escape" && !$("#editorBackdrop").hidden) closeEditor();
+  });
+
+  // ---------------- init ----------------
+  showEmpty();
+  clearLog();
+  setResultButtons(false);
+  loadPresets().catch((e) => {
+    showError("Could not load presets from the server.\n" + (e.message || ""));
+  });
+</script>
+</body>
+</html>
