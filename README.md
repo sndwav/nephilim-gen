@@ -112,7 +112,7 @@ npm start
 You'll see:
 
 ```
-Game Image Generator -> http://localhost:5173
+Nephilim Generator -> http://localhost:5173
 ```
 
 Open **<http://localhost:5173>** in your browser.

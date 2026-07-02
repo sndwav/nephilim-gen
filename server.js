@@ -202,4 +202,4 @@ app.use("/references", express.static(REFS_DIR));
 app.use(express.static(path.join(__dirname, "public")));
 
 await ensureSetup();
-app.listen(PORT, () => console.log(`\n  Game Image Generator -> http://localhost:${PORT}\n`));
+app.listen(PORT, () => console.log(`\n  Nephilim Generator -> http://localhost:${PORT}\n`));
