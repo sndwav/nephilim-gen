@@ -100,14 +100,14 @@
   }
   select {
     appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%239aa4b2' d='M2 4l4 4 4-4z'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa4b2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     background-repeat: no-repeat;
     background-position: right 10px center;
     padding-right: 30px;
     cursor: pointer;
   }
   .field-hint { font-size: 11px; color: var(--muted-2); }
-  .warn { font-size: 11px; color: #ffcf70; min-height: 14px; }
+  .warn { font-size: 11px; color: #ffcf70; min-height: 14px; display: flex; align-items: center; gap: 5px; }
 
   .meta-line {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -265,6 +265,7 @@
   .btn-group { display: flex; gap: 6px; }
   .btn.iconbtn { padding: 9px 11px; font-size: 15px; line-height: 1; }
   .modal-sm { width: min(440px, 100%); }
+  svg.icon { display: inline-block; vertical-align: middle; flex: none; }
 
   /* ---------- reference thumbnails ---------- */
   .thumbs {
@@ -278,9 +279,9 @@
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb-rm {
     position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
-    border-radius: 6px; border: none; cursor: pointer; line-height: 1;
-    background: rgba(10,12,16,.78); color: #fff; font-size: 12px;
-    display: grid; place-items: center;
+    border-radius: 6px; border: none; cursor: pointer; padding: 0;
+    background: rgba(10,12,16,.78); color: #fff;
+    display: flex; align-items: center; justify-content: center;
   }
   .thumb-rm:hover { background: var(--danger); }
   .thumb.add {
@@ -397,9 +398,9 @@
           <select id="presetSelect"></select>
         </label>
         <div class="btn-group">
-          <button class="btn ghost iconbtn" id="presetEditBtn" title="Edit preset name" aria-label="Edit preset name">✎</button>
-          <button class="btn ghost iconbtn" id="presetDeleteBtn" title="Delete preset" aria-label="Delete preset">🗑</button>
-          <button class="btn ghost iconbtn" id="presetAddBtn" title="Add preset" aria-label="Add preset">＋</button>
+          <button class="btn ghost iconbtn" id="presetEditBtn" title="Edit preset name" aria-label="Edit preset name" data-icon="pencil" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="presetDeleteBtn" title="Delete preset" aria-label="Delete preset" data-icon="trash-2" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="presetAddBtn" title="Add preset" aria-label="Add preset" data-icon="plus" data-icon-size="16"></button>
         </div>
       </div>
 
@@ -409,9 +410,9 @@
           <select id="subSelect"></select>
         </label>
         <div class="btn-group">
-          <button class="btn ghost iconbtn" id="subEditBtn" title="Edit sub-preset" aria-label="Edit sub-preset">✎</button>
-          <button class="btn ghost iconbtn" id="subDeleteBtn" title="Delete sub-preset" aria-label="Delete sub-preset">🗑</button>
-          <button class="btn ghost iconbtn" id="subAddBtn" title="Add sub-preset" aria-label="Add sub-preset">＋</button>
+          <button class="btn ghost iconbtn" id="subEditBtn" title="Edit sub-preset" aria-label="Edit sub-preset" data-icon="pencil" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="subDeleteBtn" title="Delete sub-preset" aria-label="Delete sub-preset" data-icon="trash-2" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="subAddBtn" title="Add sub-preset" aria-label="Add sub-preset" data-icon="plus" data-icon-size="16"></button>
         </div>
       </div>
 
@@ -456,7 +457,7 @@
     <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="presetNameTitle">
       <div class="modal-head">
         <h2 id="presetNameTitle">Edit preset</h2>
-        <button class="icon-btn" id="presetNameClose" title="Close">✕</button>
+        <button class="icon-btn" id="presetNameClose" title="Close" aria-label="Close" data-icon="x"></button>
       </div>
       <div class="modal-body">
         <label class="field">
@@ -477,7 +478,7 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="subEditTitle">
       <div class="modal-head">
         <h2 id="subEditTitle">Edit sub-preset</h2>
-        <button class="icon-btn" id="subEditClose" title="Close">✕</button>
+        <button class="icon-btn" id="subEditClose" title="Close" aria-label="Close" data-icon="x"></button>
       </div>
       <div class="modal-body">
         <div id="subEditor"></div>
@@ -495,7 +496,7 @@
     <div class="modal export-modal" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
       <div class="modal-head">
         <h2 id="exportTitle">Prepare for export</h2>
-        <button class="icon-btn" id="exportClose" title="Close">✕</button>
+        <button class="icon-btn" id="exportClose" title="Close" aria-label="Close" data-icon="x"></button>
       </div>
       <div class="modal-body export-body">
         <div class="export-stage">
@@ -554,6 +555,20 @@
     Object.assign(n, props);
     for (const c of children) if (c != null) n.append(c);
     return n;
+  }
+  // ---------------- Lucide icons (inlined SVGs — lucide-static v1.23.0, ISC) ----------------
+  const ICONS = {
+    "pencil": '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+    "trash-2": '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    "image": '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+    "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  };
+  function icon(name, size = 18) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = `<svg class="icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+    return tpl.content.firstElementChild;
   }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function uuid() {
@@ -716,7 +731,7 @@
     const p = $("#preview"); p.className = "preview"; p.innerHTML = "";
     p.append(
       el("div", {},
-        el("div", { className: "empty-ill", textContent: "🖼️" }),
+        el("div", { className: "empty-ill" }, icon("image", 46)),
         el("div", { className: "empty-title", textContent: "Your image will appear here" }),
         el("div", { className: "empty-text", textContent: "Pick a preset, type a subject, and hit Generate." }),
       ),
@@ -736,7 +751,7 @@
     const p = $("#preview"); p.className = "preview"; p.innerHTML = "";
     p.append(
       el("div", { className: "error-box" },
-        el("div", { className: "error-title" }, el("span", { textContent: "⚠" }), el("span", { textContent: "Generation failed" })),
+        el("div", { className: "error-title" }, icon("triangle-alert", 18), el("span", { textContent: "Generation failed" })),
         el("div", { className: "error-msg", textContent: msg }),
       ),
     );
@@ -952,7 +967,11 @@
     // template + {{subject}} warning
     const ta = el("textarea", { rows: 7, value: s.promptTemplate || "" });
     const warn = el("div", { className: "warn" });
-    const syncWarn = () => warn.textContent = ta.value.includes("{{subject}}") ? "" : "⚠ No {{subject}} token — the subject will be appended at the end.";
+    const syncWarn = () => {
+      warn.innerHTML = "";
+      if (!ta.value.includes("{{subject}}"))
+        warn.append(icon("triangle-alert", 13), el("span", { textContent: "No {{subject}} token — the subject will be appended at the end." }));
+    };
     ta.addEventListener("input", () => { s.promptTemplate = ta.value; syncWarn(); });
     const tf = field("Prompt template", ta);
     tf.append(el("div", { className: "field-hint", textContent: "Place {{subject}} where the typed subject should be inserted." }), warn);
@@ -994,7 +1013,7 @@
     for (const ref of refs) {
       grid.append(el("div", { className: "thumb" },
         el("img", { src: `/references/${s.id}/${ref.filename}`, alt: ref.originalName, title: ref.originalName }),
-        el("button", { className: "thumb-rm", textContent: "✕", title: "Remove", onclick: () => handleRefDelete(ref.id) }),
+        el("button", { className: "thumb-rm", title: "Remove", onclick: () => handleRefDelete(ref.id) }, icon("x", 14)),
       ));
     }
     const fileInput = el("input", { type: "file", accept: "image/*", multiple: true });
@@ -1004,7 +1023,7 @@
       fileInput.value = "";
     });
     grid.append(el("label", { className: "thumb add", title: "Add images" },
-      el("span", { className: "plus", textContent: "+" }),
+      el("span", { className: "plus" }, icon("plus", 20)),
       el("span", { className: "add-label", textContent: "Add" }),
       fileInput,
     ));
@@ -1177,8 +1196,8 @@
       grid.append(el("div", { className: "frame-cell", onclick: () => selectFrame(f.id) },
         el("div", { className: "thumb" + (st.selectedFrameId === f.id ? " selected" : "") },
           el("img", { src: `/frames/${f.filename}`, alt: f.originalName, title: f.originalName }),
-          el("button", { className: "thumb-rm", textContent: "✕", title: "Delete frame",
-            onclick: (e) => { e.stopPropagation(); handleFrameDelete(f.id); } }),
+          el("button", { className: "thumb-rm", title: "Delete frame",
+            onclick: (e) => { e.stopPropagation(); handleFrameDelete(f.id); } }, icon("x", 14)),
         ),
         el("div", { className: "frame-name", textContent: f.originalName.replace(/\.[^.]+$/, ""), title: f.originalName }),
       ));
@@ -1187,7 +1206,7 @@
     fileInput.style.display = "none";
     fileInput.addEventListener("change", () => { if (fileInput.files?.length) handleFrameUpload([...fileInput.files]); fileInput.value = ""; });
     grid.append(el("label", { className: "thumb add", title: "Add PNG frame" },
-      el("span", { className: "plus", textContent: "+" }),
+      el("span", { className: "plus" }, icon("plus", 20)),
       el("span", { className: "add-label", textContent: "Add" }),
       fileInput,
     ));
@@ -1322,6 +1341,9 @@
   });
 
   // ---------------- init ----------------
+  document.querySelectorAll("[data-icon]").forEach((elm) => {
+    elm.append(icon(elm.dataset.icon, elm.dataset.iconSize ? parseInt(elm.dataset.iconSize, 10) : 18));
+  });
   showEmpty();
   clearLog();
   setResultButtons(false);
