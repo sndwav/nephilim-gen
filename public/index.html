@@ -258,18 +258,13 @@
     padding: 14px 18px; border-top: 1px solid var(--border); background: var(--panel-2);
   }
 
-  .subpreset-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
-  .chip {
-    appearance: none; border: 1px solid var(--border-2); background: var(--panel-2);
-    color: var(--muted); border-radius: 999px; padding: 6px 13px; font: inherit;
-    font-size: 12px; font-weight: 550; cursor: pointer; transition: all .15s;
-  }
-  .chip:hover { color: var(--text); }
-  .chip.active { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
   #subEditor { display: flex; flex-direction: column; gap: 14px; }
-  .sub-del { margin-top: 2px; }
   .empty-hint { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+
+  /* ---------- icon-button groups & small modal ---------- */
+  .btn-group { display: flex; gap: 6px; }
+  .btn.iconbtn { padding: 9px 11px; font-size: 15px; line-height: 1; }
+  .modal-sm { width: min(440px, 100%); }
 
   /* ---------- reference thumbnails ---------- */
   .thumbs {
@@ -401,7 +396,11 @@
           <span>Preset</span>
           <select id="presetSelect"></select>
         </label>
-        <button class="btn ghost" id="newPresetBtn" title="Create a new preset">+ New</button>
+        <div class="btn-group">
+          <button class="btn ghost iconbtn" id="presetEditBtn" title="Edit preset name" aria-label="Edit preset name">✎</button>
+          <button class="btn ghost iconbtn" id="presetDeleteBtn" title="Delete preset" aria-label="Delete preset">🗑</button>
+          <button class="btn ghost iconbtn" id="presetAddBtn" title="Add preset" aria-label="Add preset">＋</button>
+        </div>
       </div>
 
       <div class="row">
@@ -409,7 +408,11 @@
           <span>Sub-preset</span>
           <select id="subSelect"></select>
         </label>
-        <button class="btn ghost" id="editBtn" title="Edit this preset">Edit</button>
+        <div class="btn-group">
+          <button class="btn ghost iconbtn" id="subEditBtn" title="Edit sub-preset" aria-label="Edit sub-preset">✎</button>
+          <button class="btn ghost iconbtn" id="subDeleteBtn" title="Delete sub-preset" aria-label="Delete sub-preset">🗑</button>
+          <button class="btn ghost iconbtn" id="subAddBtn" title="Add sub-preset" aria-label="Add sub-preset">＋</button>
+        </div>
       </div>
 
       <div class="meta-line" id="subMeta"></div>
@@ -448,31 +451,41 @@
     </section>
   </div>
 
-  <!-- ============ EDITOR MODAL ============ -->
-  <div class="modal-backdrop" id="editorBackdrop" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+  <!-- ============ PRESET NAME MODAL (add / edit) ============ -->
+  <div class="modal-backdrop" id="presetNameBackdrop" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="presetNameTitle">
       <div class="modal-head">
-        <h2 id="editorTitle">Edit preset</h2>
-        <button class="icon-btn" id="editorClose" title="Close">✕</button>
+        <h2 id="presetNameTitle">Edit preset</h2>
+        <button class="icon-btn" id="presetNameClose" title="Close">✕</button>
       </div>
       <div class="modal-body">
         <label class="field">
           <span>Preset name</span>
-          <input type="text" id="presetName" placeholder="e.g. Icon" />
+          <input type="text" id="presetNameInput" placeholder="e.g. Icon" />
         </label>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn ghost" id="presetNameCancel">Cancel</button>
+        <button class="btn primary" id="presetNameSave">Save</button>
+      </div>
+    </div>
+  </div>
 
-        <div class="subpreset-bar">
-          <div class="chips" id="subChips"></div>
-          <button class="btn ghost small" id="addSubBtn">+ Add sub-preset</button>
-        </div>
-
+  <!-- ============ SUB-PRESET MODAL (add / edit) ============ -->
+  <div class="modal-backdrop" id="subEditBackdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="subEditTitle">
+      <div class="modal-head">
+        <h2 id="subEditTitle">Edit sub-preset</h2>
+        <button class="icon-btn" id="subEditClose" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
         <div id="subEditor"></div>
       </div>
       <div class="modal-foot">
-        <button class="btn danger ghost" id="deletePresetBtn">Delete preset</button>
         <div class="spacer"></div>
-        <button class="btn ghost" id="editorCancel">Close</button>
-        <button class="btn primary" id="editorSave">Save</button>
+        <button class="btn ghost" id="subEditCancel">Cancel</button>
+        <button class="btn primary" id="subEditSave">Save</button>
       </div>
     </div>
   </div>
@@ -638,6 +651,12 @@
     updatePromptPreview();
     updateModelBadge();
     updateGenerateState();
+    const hasPreset = !!currentPreset(), hasSub = !!currentSub();
+    $("#presetEditBtn").disabled = !hasPreset;
+    $("#presetDeleteBtn").disabled = !hasPreset;
+    $("#subEditBtn").disabled = !hasSub;
+    $("#subDeleteBtn").disabled = !hasSub;
+    $("#subAddBtn").disabled = !hasPreset;
   }
   function renderPresetSelect() {
     const sel = $("#presetSelect");
@@ -789,59 +808,145 @@
     sel.value = value;
     return sel;
   }
-  function openNewPreset() {
-    api("POST", "/api/presets", { name: "New Preset" })
-      .then(async (p) => { await loadPresets(); selectedPresetId = p.id; openEditor(p.id, true); })
-      .catch((e) => toast(e.message, true));
-  }
-  function openEditor(presetId, isNew = false) {
-    const p = presetsData.presets.find((x) => x.id === presetId);
+  // ---------------- presets: add / edit (name) + delete ----------------
+  let presetNameMode = "edit";
+  function openPresetEdit() {
+    const p = currentPreset();
     if (!p) { toast("Select a preset to edit.", true); return; }
-    editorDraft = clone(p);
-    editorDraft.__isNew = isNew;
-    // open on the sub-preset selected in the main dropdown (fall back to the first)
-    editorSubIndex = Math.max(0, editorDraft.subPresets.findIndex((s) => s.id === selectedSubId));
-    if (!editorDraft.subPresets.length) addSubPreset();   // start with one for convenience
-    else renderEditor();
-    $("#editorBackdrop").hidden = false;
-    document.body.style.overflow = "hidden";
-    setTimeout(() => $("#presetName").focus(), 30);
+    presetNameMode = "edit";
+    $("#presetNameTitle").textContent = "Edit preset";
+    $("#presetNameSave").textContent = "Save";
+    $("#presetNameInput").value = p.name || "";
+    openPresetNameModal();
   }
-  async function closeEditor() {
-    $("#editorBackdrop").hidden = true;
+  function openPresetAdd() {
+    presetNameMode = "add";
+    $("#presetNameTitle").textContent = "New preset";
+    $("#presetNameSave").textContent = "Create";
+    $("#presetNameInput").value = "";
+    openPresetNameModal();
+  }
+  function openPresetNameModal() {
+    $("#presetNameBackdrop").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => { const i = $("#presetNameInput"); i.focus(); i.select(); }, 30);
+  }
+  function closePresetName() {
+    $("#presetNameBackdrop").hidden = true;
+    document.body.style.overflow = "";
+  }
+  async function savePresetName() {
+    const name = $("#presetNameInput").value.trim();
+    if (!name) { toast("Please enter a preset name.", true); return; }
+    try {
+      if (presetNameMode === "add") {
+        const p = await api("POST", "/api/presets", { name });
+        selectedPresetId = p.id; selectedSubId = null;
+      } else {
+        const p = currentPreset(); if (!p) return;
+        const payload = clone(p); payload.name = name;
+        await api("PUT", `/api/presets/${p.id}`, payload);
+      }
+      closePresetName();
+      await loadPresets();
+      toast(presetNameMode === "add" ? "Preset created." : "Preset saved.");
+    } catch (e) { toast(e.message, true); }
+  }
+  async function deletePresetDirect() {
+    const p = currentPreset(); if (!p) return;
+    const n = (p.subPresets || []).length;
+    if (!confirm(`Delete preset "${p.name || "Untitled"}"?\n\nThis also removes its ${n} sub-preset${n === 1 ? "" : "s"} and all their reference images. This cannot be undone.`)) return;
+    try {
+      await api("DELETE", `/api/presets/${p.id}`);
+      selectedPresetId = null;
+      await loadPresets();   // falls back to the first preset (or none)
+      toast("Preset deleted.");
+    } catch (e) { toast(e.message, true); }
+  }
+
+  // ---------------- sub-presets: add / edit / delete ----------------
+  function makeNewSub() {
+    return {
+      id: uuid(),
+      name: "New Sub-preset",
+      promptTemplate: "Following the provided references, generate: {{subject}}.",
+      referenceImages: [],
+      model: "gemini-3.1-flash-image",
+      aspectRatio: "1:1",
+      resolution: "1K",
+      exportWidth: 64,
+      exportHeight: 64,
+    };
+  }
+  let subModalMode = "edit";
+  function openSubEdit() {
+    const p = currentPreset(), sub = currentSub();
+    if (!p || !sub) { toast("Select a sub-preset to edit.", true); return; }
+    subModalMode = "edit";
+    editorDraft = clone(p);
+    editorSubIndex = Math.max(0, editorDraft.subPresets.findIndex((s) => s.id === selectedSubId));
+    $("#subEditTitle").textContent = "Edit sub-preset";
+    $("#subEditSave").textContent = "Save";
+    openSubModal();
+  }
+  function openSubAdd() {
+    const p = currentPreset();
+    if (!p) { toast("Create or select a preset first.", true); return; }
+    subModalMode = "add";
+    editorDraft = clone(p);
+    editorDraft.subPresets.push(makeNewSub());
+    editorSubIndex = editorDraft.subPresets.length - 1;
+    $("#subEditTitle").textContent = "New sub-preset";
+    $("#subEditSave").textContent = "Create";
+    openSubModal();
+  }
+  function openSubModal() {
+    renderSubEditor();
+    $("#subEditBackdrop").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => { const inp = $("#subEditor").querySelector("input"); if (inp) { inp.focus(); inp.select(); } }, 30);
+  }
+  async function closeSubModal() {
+    $("#subEditBackdrop").hidden = true;
     document.body.style.overflow = "";
     editorDraft = null;
-    await loadPresets();   // sync any persisted changes (references / auto-saves)
+    await loadPresets();   // sync immediate reference changes; discard other unsaved edits
   }
-  function renderEditor() {
-    $("#editorTitle").textContent = editorDraft.__isNew ? "New preset" : "Edit preset";
-    $("#presetName").value = editorDraft.name || "";
-    renderSubChips();
-    renderSubEditor();
+  async function saveSubModal() {
+    if (!editorDraft) return;
+    const editedSubId = editorDraft.subPresets[editorSubIndex]?.id || null;
+    try {
+      const payload = clone(editorDraft);
+      await api("PUT", `/api/presets/${payload.id}`, payload);
+      selectedSubId = editedSubId;             // land the main pane on the sub you edited/created
+      editorDraft = null;
+      $("#subEditBackdrop").hidden = true;
+      document.body.style.overflow = "";
+      await loadPresets();
+      toast(subModalMode === "add" ? "Sub-preset created." : "Sub-preset saved.");
+    } catch (e) { toast(e.message, true); }
   }
-  function renderSubChips() {
-    const wrap = $("#subChips"); wrap.innerHTML = "";
-    editorDraft.subPresets.forEach((s, i) => {
-      wrap.append(el("button", {
-        className: "chip" + (i === editorSubIndex ? " active" : ""),
-        textContent: s.name || "Untitled",
-        onclick: () => { editorSubIndex = i; renderEditor(); },
-      }));
-    });
+  async function deleteSubPresetDirect() {
+    const p = currentPreset(), sub = currentSub();
+    if (!p || !sub) return;
+    if (!confirm(`Delete sub-preset "${sub.name || "Untitled"}"? This cannot be undone.`)) return;
+    try {
+      const payload = clone(p);
+      payload.subPresets = (payload.subPresets || []).filter((s) => s.id !== sub.id);
+      await api("PUT", `/api/presets/${p.id}`, payload);
+      selectedSubId = null;                    // loadPresets falls back to the first sub
+      await loadPresets();
+      toast("Sub-preset deleted.");
+    } catch (e) { toast(e.message, true); }
   }
   function renderSubEditor() {
     const host = $("#subEditor"); host.innerHTML = "";
-    const subs = editorDraft.subPresets;
-    if (!subs.length) {
-      host.append(el("p", { className: "empty-hint", textContent: 'No sub-presets yet. Click "+ Add sub-preset".' }));
-      return;
-    }
-    editorSubIndex = Math.max(0, Math.min(editorSubIndex, subs.length - 1));
-    const s = subs[editorSubIndex];
+    const s = editorDraft?.subPresets[editorSubIndex];
+    if (!s) return;
 
     // name
     const nameInput = el("input", { type: "text", value: s.name || "", placeholder: "e.g. Ability Icon" });
-    nameInput.addEventListener("input", () => { s.name = nameInput.value; renderSubChips(); });
+    nameInput.addEventListener("input", () => { s.name = nameInput.value; });
     host.append(field("Sub-preset name", nameInput));
 
     // template + {{subject}} warning
@@ -879,10 +984,6 @@
 
     // references
     host.append(renderRefManager(s));
-
-    // delete sub-preset
-    host.append(el("div", { className: "sub-del" },
-      el("button", { className: "btn danger ghost small", textContent: "Delete sub-preset", onclick: deleteSubPreset })));
   }
   function renderRefManager(s) {
     const refs = s.referenceImages || [];
@@ -909,38 +1010,14 @@
     ));
     box.append(grid);
     box.append(el("div", { className: "field-hint", textContent: "Nano Banana 2 uses up to 14 reference images. These define the style sent to the model." }));
+    box.append(el("div", { className: "field-hint", textContent: "Reference changes save immediately — independent of the Save button." }));
     return box;
-  }
-  function addSubPreset() {
-    editorDraft.subPresets.push({
-      id: uuid(),
-      name: "New Sub-preset",
-      promptTemplate: "Following the provided references, generate: {{subject}}.",
-      referenceImages: [],
-      model: "gemini-3.1-flash-image",
-      aspectRatio: "1:1",
-      resolution: "1K",
-      exportWidth: 64,
-      exportHeight: 64,
-    });
-    editorSubIndex = editorDraft.subPresets.length - 1;
-    renderEditor();
-  }
-  function deleteSubPreset() {
-    const subs = editorDraft.subPresets;
-    if (!subs.length) return;
-    const s = subs[editorSubIndex];
-    if (!confirm(`Delete sub-preset "${s.name || "Untitled"}"? This is applied when you Save.`)) return;
-    subs.splice(editorSubIndex, 1);
-    editorSubIndex = Math.max(0, editorSubIndex - 1);
-    renderEditor();
   }
   // PUT the current draft so the preset & its sub-presets exist server-side (needed before reference ops)
   async function ensureSaved() {
-    const payload = clone(editorDraft); delete payload.__isNew;
+    const payload = clone(editorDraft);
     const saved = await api("PUT", `/api/presets/${payload.id}`, payload);
     editorDraft = clone(saved);
-    editorDraft.__isNew = false;
   }
   async function handleRefUpload(files) {
     try {
@@ -952,7 +1029,7 @@
         s.referenceImages = s.referenceImages || [];
         s.referenceImages.push(ref);
       }
-      renderEditor();
+      renderSubEditor();
       toast(`Added ${files.length} image${files.length === 1 ? "" : "s"}.`);
     } catch (e) { toast(e.message, true); }
   }
@@ -961,31 +1038,7 @@
       const s = editorDraft.subPresets[editorSubIndex];
       await api("DELETE", `/api/references/${s.id}/${refId}`);
       s.referenceImages = (s.referenceImages || []).filter((r) => r.id !== refId);
-      renderEditor();
-    } catch (e) { toast(e.message, true); }
-  }
-  async function saveEditor() {
-    try {
-      const payload = clone(editorDraft); delete payload.__isNew;
-      if (!payload.name?.trim()) payload.name = "Untitled preset";
-      const keepId = payload.id;
-      await api("PUT", `/api/presets/${keepId}`, payload);
-      selectedPresetId = keepId;
-      await closeEditor();
-      const preset = currentPreset();
-      if (!preset?.subPresets.find((s) => s.id === selectedSubId)) selectedSubId = preset?.subPresets[0]?.id || null;
-      renderMain();
-      toast("Preset saved.");
-    } catch (e) { toast(e.message, true); }
-  }
-  async function deletePreset() {
-    if (!confirm("Delete this preset, its sub-presets, and all their reference images?")) return;
-    try {
-      const id = editorDraft.id;
-      await api("DELETE", `/api/presets/${id}`);
-      if (selectedPresetId === id) selectedPresetId = null;
-      await closeEditor();
-      toast("Preset deleted.");
+      renderSubEditor();
     } catch (e) { toast(e.message, true); }
   }
 
@@ -1230,20 +1283,27 @@
   });
   $("#subject").addEventListener("input", () => { updatePromptPreview(); updateGenerateState(); });
   $("#generateBtn").addEventListener("click", doGenerate);
-  $("#newPresetBtn").addEventListener("click", openNewPreset);
-  $("#editBtn").addEventListener("click", () => openEditor(selectedPresetId, false));
+  $("#presetEditBtn").addEventListener("click", openPresetEdit);
+  $("#presetDeleteBtn").addEventListener("click", deletePresetDirect);
+  $("#presetAddBtn").addEventListener("click", openPresetAdd);
+  $("#subEditBtn").addEventListener("click", openSubEdit);
+  $("#subDeleteBtn").addEventListener("click", deleteSubPresetDirect);
+  $("#subAddBtn").addEventListener("click", openSubAdd);
   $("#copyPromptBtn").addEventListener("click", () => { if (lastResult) copyText(lastResult.promptUsed); });
   $("#downloadBtn").addEventListener("click", (e) => { if (!lastResult) e.preventDefault(); });
   $("#logClear").addEventListener("click", clearLog);
 
-  $("#editorClose").addEventListener("click", closeEditor);
-  $("#editorCancel").addEventListener("click", closeEditor);
-  $("#editorSave").addEventListener("click", saveEditor);
-  $("#deletePresetBtn").addEventListener("click", deletePreset);
-  $("#addSubBtn").addEventListener("click", addSubPreset);
-  $("#presetName").addEventListener("input", () => { if (editorDraft) editorDraft.name = $("#presetName").value; });
-  // Backdrop clicks intentionally do NOT close the modal — a text-selection drag that ends
-  // on the backdrop would otherwise fire a click on it. Close via ✕, Close, Save, or Esc.
+  // Preset name modal (add / edit)
+  $("#presetNameClose").addEventListener("click", closePresetName);
+  $("#presetNameCancel").addEventListener("click", closePresetName);
+  $("#presetNameSave").addEventListener("click", savePresetName);
+  $("#presetNameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); savePresetName(); } });
+  // Sub-preset modal (add / edit)
+  $("#subEditClose").addEventListener("click", closeSubModal);
+  $("#subEditCancel").addEventListener("click", closeSubModal);
+  $("#subEditSave").addEventListener("click", saveSubModal);
+  // Backdrop clicks intentionally do NOT close either modal (a text-selection drag that ends on the
+  // backdrop would otherwise fire a click on it). Close via ✕, Cancel, or Esc.
 
   $("#prepareExportBtn").addEventListener("click", openExportModal);
   $("#exportClose").addEventListener("click", closeExportModal);
@@ -1256,7 +1316,8 @@
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doGenerate(); }
     if (e.key === "Escape") {
       if (!$("#exportBackdrop").hidden) closeExportModal();
-      else if (!$("#editorBackdrop").hidden) closeEditor();
+      else if (!$("#subEditBackdrop").hidden) closeSubModal();
+      else if (!$("#presetNameBackdrop").hidden) closePresetName();
     }
   });
 
