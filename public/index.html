@@ -34,6 +34,8 @@
     background: radial-gradient(1200px 800px at 15% -10%, #182231 0%, var(--bg) 55%) fixed;
     font-size: 14px;
     line-height: 1.5;
+    display: flex;
+    flex-direction: column;
   }
   h1, h2, h3 { margin: 0; font-weight: 650; }
   kbd {
@@ -46,12 +48,37 @@
     font-size: 11px;
   }
 
+  /* ---------- app shell: header + tabs ---------- */
+  .app-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    padding: 10px 20px; border-bottom: 1px solid var(--border);
+    background: var(--panel); flex: none;
+  }
+  .app-header .brand h1 { font-size: 17px; }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    appearance: none; background: transparent; border: none; color: var(--muted);
+    font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    padding: 10px 14px; border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-content { flex: 1; min-height: 0; overflow: auto; }
+  .tab-panel { height: 100%; }
+  .tab-panel[hidden] { display: none; }
+  .placeholder {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--muted); text-align: center; padding: 24px;
+  }
+  .placeholder h2 { font-size: 20px; color: var(--text); }
+
   /* ---------- layout ---------- */
   .app {
     display: grid;
     grid-template-columns: 1fr 2fr;
     gap: 18px;
-    height: 100vh;
+    height: 100%;
     padding: 18px;
   }
   .pane {
@@ -381,17 +408,22 @@
 </style>
 </head>
 <body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">◆</div>
+      <h1>The Souls of The Nephilim</h1>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab active" id="tab-image" data-tab="image" role="tab" aria-selected="true">Image Generator</button>
+      <button class="tab" id="tab-text" data-tab="text" role="tab" aria-selected="false">Text Editor</button>
+    </nav>
+  </header>
+
+  <main class="tab-content">
+  <section class="tab-panel" id="panel-image" role="tabpanel" aria-labelledby="tab-image">
   <div class="app">
     <!-- ============ LEFT: CONTROLS ============ -->
     <section class="pane left">
-      <div class="brand">
-        <div class="logo">◆</div>
-        <div>
-          <h1>Nephilim Generator</h1>
-          <p class="sub">Local Gemini image studio</p>
-        </div>
-      </div>
-
       <div class="row">
         <label class="field grow">
           <span>Preset</span>
@@ -451,6 +483,15 @@
       </div>
     </section>
   </div>
+  </section>
+
+  <section class="tab-panel" id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
+    <div class="placeholder">
+      <h2>Text Editor</h2>
+      <p>Coming soon.</p>
+    </div>
+  </section>
+  </main>
 
   <!-- ============ PRESET NAME MODAL (add / edit) ============ -->
   <div class="modal-backdrop" id="presetNameBackdrop" hidden>
@@ -1339,6 +1380,19 @@
       else if (!$("#presetNameBackdrop").hidden) closePresetName();
     }
   });
+
+  // ---------------- tabs ----------------
+  function switchTab(name) {
+    document.querySelectorAll(".tab").forEach((t) => {
+      const on = t.dataset.tab === name;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    document.querySelectorAll(".tab-panel").forEach((p) => { p.hidden = p.id !== "panel-" + name; });
+    try { localStorage.setItem("activeTab", name); } catch {}
+  }
+  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
+  (() => { let saved = null; try { saved = localStorage.getItem("activeTab"); } catch {} switchTab(saved === "text" ? "text" : "image"); })();
 
   // ---------------- init ----------------
   document.querySelectorAll("[data-icon]").forEach((elm) => {
