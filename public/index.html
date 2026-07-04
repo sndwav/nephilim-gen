@@ -336,11 +336,12 @@
   }
 
   /* ---------- export modal ---------- */
-  .export-modal { width: min(980px, 100%); height: calc(100vh - 48px); }
+  .export-modal { width: min(1060px, 100%); height: calc(100vh - 48px); }
   .export-body { flex: 1; min-height: 0; flex-direction: row; align-items: stretch; gap: 20px; overflow: hidden; }
   .export-stage { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
-  .export-side { width: 260px; flex: none; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-  .export-frame-field { flex: 1; min-height: 0; }
+  .export-side { width: 320px; flex: none; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .export-frame-field { flex: 0 0 auto; min-height: 0; }
+  .export-layers-field { flex: 1; min-height: 0; }
   .export-preview-field { flex: none; }
   .export-hint { margin: 0; }
   .crop-wrap {
@@ -379,7 +380,7 @@
     gap: 8px;
     align-items: start;
     align-content: start;              /* constant row gap; slack stays at the bottom */
-    flex: 1;
+    max-height: 150px;
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -398,12 +399,35 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .export-status { font-size: 12px; color: var(--muted); }
+  /* frame layers (stack) */
+  #frameLayers { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0;
+    scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
+  #frameLayers input[type="range"] { accent-color: var(--accent); }
+  .layers-empty { color: var(--muted-2); font-size: 12px; font-style: italic; padding: 6px 2px; }
+  .frame-layer { border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--panel-2); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .frame-layer-head { display: flex; align-items: center; gap: 6px; }
+  .thumb-mini { width: 26px; height: 26px; flex: none; border-radius: 5px; object-fit: cover;
+    background: var(--panel-3); border: 1px solid var(--border-2); }
+  .layer-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .layer-btn { appearance: none; background: transparent; border: none; color: var(--muted);
+    cursor: pointer; padding: 2px; border-radius: 4px; display: inline-flex; line-height: 0; }
+  .layer-btn:hover { color: var(--text); background: var(--panel-3); }
+  .layer-btn:disabled { opacity: .35; cursor: default; background: transparent; }
+  .frame-layer-ctrls { display: flex; align-items: center; gap: 8px; }
+  .frame-layer-ctrls select { width: auto; flex: none; padding: 5px 26px 5px 8px; font-size: 12px; }
+  .layer-op { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .layer-op input[type="range"] { flex: 1; min-width: 0; }
+  .layer-op .op-val { flex: none; width: 34px; text-align: right; font-size: 11px; color: var(--muted); }
   @media (max-width: 720px) {
     .export-modal { height: auto; }
     .export-body { flex-direction: column; align-items: stretch; overflow: auto; }
     .export-side { width: 100%; }
     .export-frame-field { flex: none; }
+    .export-layers-field { flex: none; }
     #frameThumbs { flex: none; max-height: 220px; }
+    #frameLayers { max-height: 260px; }
   }
 </style>
 </head>
@@ -554,8 +578,12 @@
         </div>
         <div class="export-side">
           <div class="field export-frame-field">
-            <span>Frame</span>
+            <span>Frames <em>(click to add a layer)</em></span>
             <div class="thumbs" id="frameThumbs"></div>
+          </div>
+          <div class="field export-layers-field">
+            <span>Layers <em>(top = front)</em></span>
+            <div id="frameLayers"></div>
           </div>
           <div class="field export-preview-field">
             <span id="exportInfo">Preview</span>
@@ -588,6 +616,8 @@
   ];
   const ASPECTS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
   const RESOLUTIONS = ["512", "1K", "2K", "4K"];
+  const BLENDS = [["normal", "Normal"], ["multiply", "Multiply"], ["screen", "Screen"]];
+  const BLEND_CANVAS = { normal: "source-over", multiply: "multiply", screen: "screen" };
 
   // ---------------- tiny helpers ----------------
   const $ = (sel) => document.querySelector(sel);
@@ -605,6 +635,8 @@
     "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     "image": '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
   };
   function icon(name, size = 18) {
     const tpl = document.createElement("template");
@@ -932,6 +964,7 @@
       resolution: "1K",
       exportWidth: 64,
       exportHeight: 64,
+      frameLayers: [],
     };
   }
   let subModalMode = "edit";
@@ -1119,10 +1152,16 @@
       crop: { x: 0, y: 0, w: 0, h: 0 },
       minW: 16, _scale: 1,
       frames: (presetsData.frames || []).slice(),
-      selectedFrameId: null, frameImg: null,
+      layers: [], imgCache: {},
       drag: null, rafPending: false,
       onResize: layoutStage,
     };
+    // restore this sub-preset's saved frame stack (skipping any frames that no longer exist)
+    const validIds = new Set(exportState.frames.map((f) => f.id));
+    exportState.layers = (sub?.frameLayers || [])
+      .filter((L) => validIds.has(L.frameId))
+      .map((L) => ({ frameId: L.frameId, blend: L.blend || "normal", opacity: L.opacity ?? 100, img: null }));
+    exportState.layers.forEach((L) => { L.img = layerImg(L.frameId); });
     $("#exportDoBtn").disabled = true;
     $("#exportStatus").textContent = "";
     $("#exportInfo").textContent = "Preview";
@@ -1130,11 +1169,13 @@
     img.onload = onSrcLoaded;
     img.src = lastResult.imageDataUrl;
     renderFrameThumbs();
+    renderLayers();
     $("#exportBackdrop").hidden = false;
     document.body.style.overflow = "hidden";
     window.addEventListener("resize", exportState.onResize);
   }
   function closeExportModal() {
+    saveFrameLayers();
     $("#exportBackdrop").hidden = true;
     document.body.style.overflow = "";
     if (exportState) window.removeEventListener("resize", exportState.onResize);
@@ -1225,17 +1266,13 @@
     window.removeEventListener("pointermove", onCropPointerMove);
     if (st) { st.drag = null; recompose(true); }
   }
-  // ----- frames -----
+  // ----- frames + layers -----
   function renderFrameThumbs() {
     const st = exportState; if (!st) return;
     const grid = $("#frameThumbs"); grid.innerHTML = "";
-    grid.append(el("div", {
-      className: "thumb none" + (st.selectedFrameId == null ? " selected" : ""),
-      title: "No frame", textContent: "None", onclick: () => selectFrame(null),
-    }));
     for (const f of st.frames) {
-      grid.append(el("div", { className: "frame-cell", onclick: () => selectFrame(f.id) },
-        el("div", { className: "thumb" + (st.selectedFrameId === f.id ? " selected" : "") },
+      grid.append(el("div", { className: "frame-cell", title: `Add "${f.originalName}"`, onclick: () => addLayer(f.id) },
+        el("div", { className: "thumb" },
           el("img", { src: `/frames/${f.filename}`, alt: f.originalName, title: f.originalName }),
           el("button", { className: "thumb-rm", title: "Delete frame",
             onclick: (e) => { e.stopPropagation(); handleFrameDelete(f.id); } }, icon("x", 14)),
@@ -1252,17 +1289,75 @@
       fileInput,
     ));
   }
-  function selectFrame(id) {
-    const st = exportState; if (!st) return;
-    st.selectedFrameId = id;
-    if (id == null) { st.frameImg = null; renderFrameThumbs(); recompose(); return; }
-    const f = st.frames.find((x) => x.id === id);
-    if (!f) { st.frameImg = null; recompose(); return; }
-    const im = new Image();
-    im.onload = () => { if (exportState && exportState.selectedFrameId === id) { exportState.frameImg = im; recompose(); } };
-    im.onerror = () => { if (!exportState) return; exportState.frameImg = null; exportState.selectedFrameId = null; renderFrameThumbs(); recompose(); toast("Frame failed to load.", true); };
+  function loadFrameImg(frameId) {
+    const st = exportState; if (!st) return null;
+    let im = st.imgCache[frameId];
+    if (im) return im;                              // already loading or loaded
+    const f = st.frames.find((x) => x.id === frameId);
+    if (!f) return null;
+    im = new Image();
+    st.imgCache[frameId] = im;
+    im.onload = () => {
+      if (!exportState || exportState.imgCache[frameId] !== im) return;
+      for (const L of exportState.layers) if (L.frameId === frameId) L.img = im;   // fills duplicates too
+      recompose();
+    };
+    im.onerror = () => { toast("A frame image failed to load.", true); };
     im.src = `/frames/${f.filename}`;
-    renderFrameThumbs();
+    return im;
+  }
+  function layerImg(frameId) {
+    const im = loadFrameImg(frameId);
+    return im && im.complete && im.naturalWidth ? im : null;
+  }
+  function addLayer(frameId) {
+    const st = exportState; if (!st) return;
+    st.layers.unshift({ frameId, blend: "normal", opacity: 100, img: layerImg(frameId) });
+    renderLayers(); recompose();
+  }
+  function removeLayer(i) {
+    const st = exportState; if (!st) return;
+    st.layers.splice(i, 1);
+    renderLayers(); recompose();
+  }
+  function moveLayer(i, dir) {
+    const st = exportState; if (!st) return;
+    const j = i + dir;
+    if (j < 0 || j >= st.layers.length) return;
+    [st.layers[i], st.layers[j]] = [st.layers[j], st.layers[i]];
+    renderLayers(); recompose();
+  }
+  function renderLayers() {
+    const st = exportState; if (!st) return;
+    const host = $("#frameLayers"); host.innerHTML = "";
+    if (!st.layers.length) {
+      host.append(el("div", { className: "layers-empty", textContent: "No frames added. Click a frame above to add a layer." }));
+      return;
+    }
+    st.layers.forEach((L, i) => {
+      const f = st.frames.find((x) => x.id === L.frameId);
+      const name = f ? f.originalName.replace(/\.[^.]+$/, "") : "(missing frame)";
+      const up = el("button", { className: "layer-btn", title: "Move up (toward front)", onclick: () => moveLayer(i, -1) }, icon("chevron-up", 15));
+      up.disabled = i === 0;
+      const down = el("button", { className: "layer-btn", title: "Move down (toward back)", onclick: () => moveLayer(i, 1) }, icon("chevron-down", 15));
+      down.disabled = i === st.layers.length - 1;
+      const rm = el("button", { className: "layer-btn", title: "Remove layer", onclick: () => removeLayer(i) }, icon("x", 15));
+      const head = el("div", { className: "frame-layer-head" },
+        f ? el("img", { className: "thumb-mini", src: `/frames/${f.filename}`, alt: name, title: name })
+          : el("div", { className: "thumb-mini" }),
+        el("span", { className: "layer-name", textContent: name, title: name }),
+        up, down, rm,
+      );
+      const blendSel = el("select", { title: "Blend mode" });
+      for (const [v, label] of BLENDS) blendSel.append(el("option", { value: v, textContent: label, selected: v === L.blend }));
+      blendSel.value = L.blend;
+      blendSel.addEventListener("change", () => { L.blend = blendSel.value; recompose(); });
+      const range = el("input", { type: "range", min: "0", max: "100", step: "1", value: String(L.opacity), title: "Opacity" });
+      const opVal = el("span", { className: "op-val", textContent: L.opacity + "%" });
+      range.addEventListener("input", () => { L.opacity = parseInt(range.value, 10) || 0; opVal.textContent = L.opacity + "%"; scheduleRecompose(); });
+      const ctrls = el("div", { className: "frame-layer-ctrls" }, blendSel, el("div", { className: "layer-op" }, range, opVal));
+      host.append(el("div", { className: "frame-layer" }, head, ctrls));
+    });
   }
   async function handleFrameUpload(files) {
     try {
@@ -1286,8 +1381,9 @@
       presetsData.frames = (presetsData.frames || []).filter((f) => f.id !== id);
       if (exportState) {
         exportState.frames = exportState.frames.filter((f) => f.id !== id);
-        if (exportState.selectedFrameId === id) { exportState.selectedFrameId = null; exportState.frameImg = null; }
-        renderFrameThumbs(); recompose();
+        exportState.layers = exportState.layers.filter((L) => L.frameId !== id);
+        delete exportState.imgCache[id];
+        renderFrameThumbs(); renderLayers(); recompose();
       }
     } catch (e) { toast(e.message, true); }
   }
@@ -1307,13 +1403,30 @@
       : [st.crop.x, st.crop.y, st.crop.w, st.crop.h];
     ctx.clearRect(0, 0, W, H);
     ctx.drawImage(st.img, c[0], c[1], c[2], c[3], 0, 0, W, H);
-    if (st.frameImg) ctx.drawImage(st.frameImg, 0, 0, W, H);
+    for (let i = st.layers.length - 1; i >= 0; i--) {   // draw back → front
+      const L = st.layers[i]; if (!L.img) continue;
+      ctx.globalAlpha = clamp(L.opacity, 0, 100) / 100;
+      ctx.globalCompositeOperation = BLEND_CANVAS[L.blend] || "source-over";
+      ctx.drawImage(L.img, 0, 0, W, H);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
     $("#exportInfo").textContent = (st.outW > 0 ? "Preview" : "Preview (crop size)") + ` — ${W}×${H}`;
   }
   function scheduleRecompose() {
     const st = exportState; if (!st || st.rafPending) return;
     st.rafPending = true;
     requestAnimationFrame(() => { if (exportState) { exportState.rafPending = false; recompose(); } });
+  }
+  function saveFrameLayers() {
+    const st = exportState; if (!st) return;
+    const sub = currentSub(), preset = currentPreset();
+    if (!sub || !preset) return;
+    const serialized = st.layers.map((L) => ({ frameId: L.frameId, blend: L.blend, opacity: L.opacity }));
+    if (JSON.stringify(serialized) === JSON.stringify(sub.frameLayers || [])) return;   // unchanged — skip PUT
+    sub.frameLayers = serialized;                       // update in-memory (optimistic)
+    api("PUT", `/api/presets/${preset.id}`, clone(preset))
+      .catch((e) => toast("Couldn't save frame layers: " + e.message, true));
   }
   function doExport() {
     const st = exportState; if (!st || !st.natW) return;
@@ -1325,6 +1438,7 @@
     const name = currentSub()?.name || "export";
     const a = el("a", { href: dataUrl, download: `${name.replace(/\s+/g, "_")}-${W}x${H}.png` });
     document.body.append(a); a.click(); a.remove();
+    saveFrameLayers();
     $("#exportStatus").textContent = "Downloaded. Saving to disk…";
     api("POST", "/api/export", { name, dataBase64: dataUrl.split(",")[1] })
       .then((r) => { $("#exportStatus").textContent = r.savedAs ? `Saved: data/exports/${r.savedAs}` : "Saved."; if (r.savedAs) logMsg(`Exported to data/exports/${r.savedAs}`, "success"); toast("Exported."); })
