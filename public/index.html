@@ -434,6 +434,7 @@
   .text-editor {
     display: flex; flex-direction: column; gap: 14px;
     height: 100%; min-height: 0; padding: 18px;
+    overflow: auto;                      /* keep name chips reachable on short viewports */
   }
   .te-toolbar {
     display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
@@ -468,8 +469,8 @@
   .te-swatch.add { border-style: dashed; color: var(--muted); padding: 5px 10px; }
   .te-swatch.add:hover { color: var(--accent); }
 
-  /* editing surfaces */
-  .te-main { flex: 1; min-height: 0; display: flex; }
+  /* editing surfaces — bounded height so the suggested-name chips sit right below, not at the page bottom */
+  .te-main { flex: none; min-height: 0; display: flex; height: clamp(200px, 33vh, 640px); }
   .te-surface, .te-source { flex: 1; min-height: 0; }
   .te-surface {
     background: var(--panel-2); border: 1px solid var(--border);
@@ -531,9 +532,9 @@
   .te-name-chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .te-name-chip {
     appearance: none; display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 14px; border: 1px solid var(--border-2); border-radius: 999px;
+    padding: 9px 16px; border: 1px solid var(--border-2); border-radius: 999px;
     background: var(--panel-3); color: var(--text); cursor: pointer;
-    font: inherit; font-size: 13px; font-weight: 550;
+    font: inherit; font-size: 16px; font-weight: 550;
     transition: border-color .15s, filter .15s;
   }
   .te-name-chip:hover { border-color: var(--accent); filter: brightness(1.1); }
@@ -1922,6 +1923,29 @@
     const text = (e.clipboardData || window.clipboardData)?.getData("text/plain") || "";
     if (text) replaceSelection(text);
   }
+  // After deleting content the browser keeps the last run's color/size as a "typing style" and wraps
+  // new keystrokes in a <span style=…> that has NO data-* attributes — it renders styled but serializes
+  // as plain (a render/source mismatch). Run on every input to keep the DOM matching our model.
+  function cleanupEditorFormatting() {
+    const root = editorEl();
+    if (!root.textContent) {
+      // Everything was deleted: drop any leftover (possibly styled/empty) nodes so the next keystroke
+      // starts clean, and keep the caret in the editor.
+      if (root.firstChild) {
+        root.innerHTML = "";
+        try {
+          const r = document.createRange(); r.selectNodeContents(root); r.collapse(true);
+          const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        } catch {}
+      }
+      return;
+    }
+    // Strip browser-injected inline color/size (spans with style but none of our data-* attributes).
+    for (const span of root.querySelectorAll("span[style]")) {
+      if (!span.dataset.color && span.style.color) span.style.color = "";
+      if (!span.dataset.size && span.style.fontSize) span.style.fontSize = "";
+    }
+  }
 
   // ----- parse (import) DOS2 string -> nodes; serialize (export) nodes -> flat DOS2 -----
   function validHex(s) {
@@ -2202,7 +2226,7 @@
     for (const name of list) {
       const chip = el("button", { className: "te-name-chip", type: "button", title: `Copy "${name}"` },
         el("span", { textContent: name }),
-        el("span", { className: "chip-copy" }, icon("copy", 14)),
+        el("span", { className: "chip-copy" }, icon("copy", 15)),
       );
       chip.addEventListener("click", () => copyText(name, `Copied "${name}"`));
       host.append(chip);
@@ -2307,7 +2331,7 @@
 
     // editor surface
     const ed = editorEl();
-    ed.addEventListener("input", () => { markDirty(); savedOffsets = null; });
+    ed.addEventListener("input", () => { markDirty(); savedOffsets = null; cleanupEditorFormatting(); });
     ed.addEventListener("beforeinput", onEditorBeforeInput);
     ed.addEventListener("paste", onEditorPaste);
     document.addEventListener("selectionchange", trackSelection);
