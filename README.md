@@ -1,11 +1,16 @@
-# Nephilim Gen — Game Asset Image Generator
+# Nephilim Gen — Game Asset Toolkit
 
-A small, local web app for generating game art (icons, portraits, backgrounds, and more) with
-Google's Gemini image models. You combine a reusable **prompt template** with a short **subject**
-you type, plus a set of **reference images** for style, and get a generated image back.
+A small, local web app for making assets for the **Souls of the Nephilim** mod, powered by Google's
+Gemini models. It has two tabs:
 
-Everything runs **on your own machine** — the app is never hosted, your API key stays on the
-server side, and your presets and images are stored as plain files you can back up by copying a folder.
+- **Image Generator** — combine a reusable **prompt template** with a short **subject** you type, plus a
+  set of **reference images** for style, and get generated game art (icons, portraits, backgrounds, and more).
+- **Text Editor** — a WYSIWYG editor for the mod's in-game text markup (Divinity: Original Sin 2
+  `<font color size>` tags): recolor and resize selected text, manage a color palette, view and copy the
+  raw tags, and let the AI **rephrase, color, and name** a rough description to match your examples.
+
+Everything runs **on your own machine** — the app is never hosted, your API key stays on the server
+side, and your presets, images, and text are stored as plain files you can back up by copying a folder.
 
 ```
 Pick a preset (e.g. "Icon")
@@ -19,14 +24,25 @@ Pick a preset (e.g. "Icon")
 
 ## Features
 
+### Image Generator
+
 - **Presets & sub-presets** — organize prompt templates by category and asset type.
 - **Live prompt preview** — see exactly what will be sent as you type (`{{subject}}` is replaced in place).
 - **Reference images** — upload style references per sub-preset; they're sent with the prompt.
 - **Per-sub-preset settings** — model, aspect ratio, and resolution.
-- **Full editor** — create/rename/delete presets and sub-presets in the UI.
+- **Prepare for export** — crop to a target size and overlay stacked PNG **frames** (with blend modes and opacity), then save a composed PNG.
 - **Download + auto-save** — every generation is saved to `data/outputs/` automatically.
 - **Activity log** — a scrollable log of what was generated and where it was saved.
 - Keyboard shortcut: **Ctrl+Enter** to generate.
+
+### Text Editor
+
+- **WYSIWYG** editing of Divinity: Original Sin 2 `<font color size>` markup, with a live **raw-tags** view that edits both ways (paste existing tags to import them).
+- **Color palette** — click a swatch to recolor the selection; add your own colors and copy any hex.
+- **Size control** — set or clear a pixel size on the selection.
+- **Copy tags** — copy the full formatted string to paste into the game.
+- **Presets** — each holds a set of example descriptions that steer the AI (the text equivalent of reference images).
+- **AI format** (**Ctrl+Enter**) — rephrases, colors, and sizes your rough text to match the selected preset's examples, and suggests **5 names** as copy-to-clipboard chips.
 
 ---
 
@@ -36,8 +52,9 @@ Pick a preset (e.g. "Icon")
 - A **Google Gemini API key**.
 - Optionally **Git**, if you want to clone the repo (you can also download it as a ZIP).
 
-> ⚠️ **Cost note:** image generation is a **paid / metered** feature on most Gemini tiers. Check current
-> pricing at <https://ai.google.dev/gemini-api/docs/pricing> before generating in bulk — don't assume a free tier.
+> ⚠️ **Cost note:** both image generation and the Text Editor's **AI format** call Gemini — a **paid /
+> metered** service on most tiers (text is far cheaper than images). Check current pricing at
+> <https://ai.google.dev/gemini-api/docs/pricing> before generating in bulk — don't assume a free tier.
 
 ---
 
@@ -124,11 +141,14 @@ Open **<http://localhost:5173>** in your browser.
 
 ## Using the app
 
+### Image Generator
+
 1. Pick a **preset** and **sub-preset** from the dropdowns on the left (a seeded **Icon → Ability Icon**
    example is included on first run).
 2. Type a **subject**. The read-only **prompt preview** updates live.
 3. Click **Generate** (or press **Ctrl+Enter**). The image appears on the right; a copy is auto-saved to `data/outputs/`.
-4. Use **Download** to save it anywhere, or **Copy prompt** to copy the exact prompt used.
+4. Use **Download** to save it anywhere, **Copy prompt** to copy the exact prompt used, or **Prepare for
+   export** to crop to a target size and overlay PNG **frames** (blend modes + opacity) before saving a composed PNG.
 
 **Editing presets & references:** click **Edit** (or **+ New**) to open the editor. There you can rename
 presets, add/edit/delete sub-presets (prompt template, model, aspect ratio, resolution), and manage
@@ -145,6 +165,24 @@ If a template has no `{{subject}}`, the subject is appended at the end (the edit
 | `gemini-3-pro-image` | Nano Banana Pro | Highest quality & best text rendering; slower/pricier. |
 | `gemini-2.5-flash-image` | Nano Banana (legacy) | Cheaper fallback, 1K only. |
 
+### Text Editor
+
+Produces the `<font>` markup Divinity: Original Sin 2 uses for in-game descriptions.
+
+1. Pick a **Preset** — a category such as *Nephilim Ability*. Each preset holds **examples**: finished,
+   formatted descriptions that teach the AI that category's voice and coloring.
+2. Type or paste a description into the editor. Select text, then click a **palette swatch** to color it
+   or use the **size** box to resize it.
+3. Toggle **Tags** to see and edit the raw `<font>` source (paste existing tags here to import them), and
+   **Copy tags** to copy the result into your game files.
+4. Click **AI format** (or **Ctrl+Enter**) to have Gemini rephrase, color, and size your text to match the
+   preset's examples. It also suggests **5 names** as chips — click one to copy it.
+
+**Managing presets & examples:** use the buttons beside the Preset dropdown to add/rename/delete presets
+and edit a preset's **Examples** (add a blank one, or *Add current editor text*). **+ Color** adds a palette
+swatch. Everything here saves automatically. The text AI uses **`gemini-2.5-flash`** by default (the
+`TEXT_MODEL` constant near the top of `server.js`).
+
 ---
 
 ## Where your data lives
@@ -153,14 +191,17 @@ Everything you create is stored as plain files under `data/` (created automatica
 
 ```
 data/
-├─ presets.json                    # all presets & sub-presets
-├─ references/<subPresetId>/...     # your uploaded reference images
-└─ outputs/                         # every generated image, auto-saved
+├─ presets.json          # image presets & sub-presets
+├─ text-editor.json      # Text Editor palette + presets (AI example sets)
+├─ references/<id>/...    # uploaded style reference images
+├─ frames/               # PNG overlay frames used by "Prepare for export"
+├─ outputs/              # every generated image, auto-saved
+└─ exports/              # composed PNGs saved from "Prepare for export"
 ```
 
 This is **durable** (survives clearing your browser), **portable** (back it up or move it by copying the
 folder), and **inspectable** (open the JSON and images directly). The `data/` folder is **not** tracked by
-Git, so your library and generated images stay private and local — **to move the app to another machine,
+Git, so your presets, images, and text stay private and local — **to move the app to another machine,
 copy the `data/` folder (and your `.env`) across.**
 
 ---
@@ -196,7 +237,9 @@ npm start
 
 - **Front end:** a single `public/index.html` — HTML + CSS + vanilla JavaScript. No framework, no build step.
 - **Server:** `server.js` — a small [Express](https://expressjs.com/) server using the official
-  [`@google/genai`](https://www.npmjs.com/package/@google/genai) SDK.
+  [`@google/genai`](https://www.npmjs.com/package/@google/genai) SDK. It exposes small JSON APIs for
+  presets, reference images, frames, image generation, and the Text Editor (palette/presets + an AI
+  text-format endpoint), and serves the page.
 - **Why a server?** Browsers can't call the Gemini API directly (CORS), and the API key must stay off the
   client. The server makes the Gemini calls and serves the page from the same origin.
 
