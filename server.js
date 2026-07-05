@@ -333,7 +333,7 @@ function buildFormatSystemPrompt(palette) {
     "- Use SINGLE quotes around attribute values.",
     "- FLAT output only — NEVER nest a <font> inside another <font>. Each styled run is its own self-contained <font>...</font>.",
     "- Use <br> for line breaks. Ordinary body text may be left untagged.",
-    "- Output ONLY the formatted string: no markdown, no code fences, no commentary, no 'Output:' prefix.",
+    "- The description text must be ONLY the formatted string: no markdown, no code fences, no commentary.",
     "",
     "COLOR PALETTE (name: hex):",
     colorLines,
@@ -351,19 +351,30 @@ function buildFormatSystemPrompt(palette) {
     "- Then apply the markup and semantic coloring rules above.",
     "",
     'For example, given "a lightning bolt that deals air damage and has a chance to stun the enemy" with the Nephilim ability style, a good result reads like: "Use the power of the Nephilim to unleash a striking lightning bolt that inflicts Air Damage upon impact and potentially Stuns the enemy." — then colored per the palette.',
+    "",
+    "NAME SUGGESTIONS:",
+    "- Also suggest exactly 5 short, evocative names for this ability/status/effect, fitting a dark-fantasy tone.",
+    "- Take cues from the naming style and conventions of the example titles provided (length, tone, structure), but also be creative and varied — do not merely mimic or reuse them.",
+    "- Plain text only — no tags, no colors, no quotes, no numbering.",
+    "",
+    'Return a JSON object: { "description": the formatted <font> string, "names": an array of exactly 5 name strings }.',
   ].join("\n");
 }
 function buildFormatUserPrompt(text, instructions, examples) {
-  const shots = (examples || []).filter((e) => e && e.text).map((e) => e.text);
+  const shots = (examples || []).filter((e) => e && e.text);
   let prompt = "";
   if (shots.length) {
-    prompt += "Example descriptions written in the target style (match their voice, phrasing, structure and coloring):\n\n";
-    prompt += shots.map((t, i) => `Example ${i + 1}:\n${t}`).join("\n\n");
+    prompt += "Example descriptions written in the target style (match their voice, phrasing, structure and coloring; use their titles as a reference for naming style):\n\n";
+    prompt += shots.map((e, i) => {
+      const title = (e.title || "").trim();
+      const head = title ? `Example ${i + 1} — title: "${title}"` : `Example ${i + 1}`;
+      return `${head}\n${e.text}`;
+    }).join("\n\n");
     prompt += "\n\n---\n\n";
   }
-  prompt += "Rewrite the following rough description into a new description in that same style. Rephrase freely to match the examples; keep the mechanics (damage types, effects, numbers, targets) accurate.";
+  prompt += "Rewrite the following rough description into a new description in that same style, and suggest 5 fitting names. Rephrase freely to match the examples; keep the mechanics (damage types, effects, numbers, targets) accurate.";
   if (instructions && instructions.trim()) prompt += ` Additional instructions: ${instructions.trim()}`;
-  prompt += `\n\nRough description:\n${String(text).trim()}\n\nFormatted description:`;
+  prompt += `\n\nRough description:\n${String(text).trim()}`;
   return prompt;
 }
 app.post("/api/text/format", async (req, res) => {
@@ -380,17 +391,37 @@ app.post("/api/text/format", async (req, res) => {
     const response = await getAI().models.generateContent({
       model: TEXT_MODEL,
       contents: [{ parts: [{ text: buildFormatUserPrompt(text, instructions, examples) }] }],
-      config: { systemInstruction: buildFormatSystemPrompt(store.palette), temperature: 0.7 },
+      config: {
+        systemInstruction: buildFormatSystemPrompt(store.palette),
+        temperature: 0.7,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            description: { type: "STRING" },
+            names: { type: "ARRAY", items: { type: "STRING" } },
+          },
+          required: ["description", "names"],
+          propertyOrdering: ["description", "names"],
+        },
+      },
     });
 
-    let out = (response.text || "").trim();
-    if (!out) {                                    // fallback: pull text parts directly (skip thoughts)
+    let raw = (response.text || "").trim();
+    if (!raw) {                                    // fallback: pull text parts directly (skip thoughts)
       const parts = response?.candidates?.[0]?.content?.parts ?? [];
-      out = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
+      raw = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join("").trim();
     }
-    out = stripCodeFences(out);
-    if (!out) return res.status(502).json({ error: "The model returned no text. Try again or adjust the input." });
-    res.json({ result: out });
+    let description = "", names = [];
+    try {
+      const parsed = JSON.parse(stripCodeFences(raw));
+      description = stripCodeFences(String(parsed.description || "")).trim();
+      names = Array.isArray(parsed.names) ? parsed.names.map((n) => String(n).trim()).filter(Boolean).slice(0, 5) : [];
+    } catch {
+      description = stripCodeFences(raw);          // fallback: treat the whole response as the description
+    }
+    if (!description) return res.status(502).json({ error: "The model returned no text. Try again or adjust the input." });
+    res.json({ result: description, names });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Formatting failed." });
   }

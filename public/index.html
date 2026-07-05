@@ -522,6 +522,24 @@
   }
   .te-overlay-text { color: var(--text); font-weight: 600; }
   .te-overlay-sub { color: var(--muted); font-size: 12px; margin-top: -8px; }
+
+  /* AI-suggested name chips (larger than palette pills, copy-only) */
+  .te-names { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  .te-names[hidden] { display: none; }
+  .te-names-label { font-size: 12px; color: var(--muted); font-weight: 550; }
+  .te-names-label em { color: var(--muted-2); font-style: normal; }
+  .te-name-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .te-name-chip {
+    appearance: none; display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border: 1px solid var(--border-2); border-radius: 999px;
+    background: var(--panel-3); color: var(--text); cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 550;
+    transition: border-color .15s, filter .15s;
+  }
+  .te-name-chip:hover { border-color: var(--accent); filter: brightness(1.1); }
+  .te-name-chip:active { transform: translateY(1px); }
+  .te-name-chip .chip-copy { color: var(--muted-2); display: inline-flex; line-height: 0; }
+  .te-name-chip:hover .chip-copy { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -642,6 +660,12 @@
       <div class="te-main">
         <div id="wysiwyg" class="te-surface" contenteditable="true" spellcheck="false" data-placeholder="Type or paste a description…"></div>
         <textarea id="sourceArea" class="te-source" spellcheck="false" placeholder="&lt;font color='#a2bc84'&gt;...&lt;/font&gt;" hidden></textarea>
+      </div>
+
+      <!-- AI-suggested names (populated after an AI format) -->
+      <div class="te-names" id="teNames" hidden>
+        <div class="te-names-label">Suggested names <em>(click to copy)</em></div>
+        <div class="te-name-chips" id="teNameChips"></div>
       </div>
     </div>
   </section>
@@ -2170,6 +2194,21 @@
     document.body.style.overflow = on ? "hidden" : (anyModalOpen() ? "hidden" : "");
   }
   function cancelAiFormat() { if (aiController) aiController.abort(); }
+  function renderNameSuggestions(names) {
+    const wrap = $("#teNames"), host = $("#teNameChips");
+    host.innerHTML = "";
+    const list = (names || []).filter((n) => n && n.trim());
+    if (!list.length) { wrap.hidden = true; return; }
+    for (const name of list) {
+      const chip = el("button", { className: "te-name-chip", type: "button", title: `Copy "${name}"` },
+        el("span", { textContent: name }),
+        el("span", { className: "chip-copy" }, icon("copy", 14)),
+      );
+      chip.addEventListener("click", () => copyText(name, `Copied "${name}"`));
+      host.append(chip);
+    }
+    wrap.hidden = false;
+  }
   async function runAiFormat() {
     if (aiRunning) return;
     const p = curTextPreset();
@@ -2182,6 +2221,7 @@
     try {
       const res = await api("POST", "/api/text/format", { text, presetId: currentPresetId }, aiController.signal);
       setEditorFromDOS2(res.result || "");
+      renderNameSuggestions(res.names);
       if (sourceMode) {                    // show the colored result rather than raw tags
         $("#sourceArea").hidden = true; $("#wysiwyg").hidden = false;
         sourceMode = false; setStyleControlsEnabled(true); renderSourceToggle();
