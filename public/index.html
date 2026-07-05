@@ -429,6 +429,99 @@
     #frameThumbs { flex: none; max-height: 220px; }
     #frameLayers { max-height: 260px; }
   }
+
+  /* ---------- text editor ---------- */
+  .text-editor {
+    display: flex; flex-direction: column; gap: 14px;
+    height: 100%; min-height: 0; padding: 18px;
+  }
+  .te-toolbar {
+    display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
+    padding: 10px 12px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+  }
+  .te-toolbar-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .te-toolbar-group > .te-label { font-size: 12px; color: var(--muted); font-weight: 550; }
+  .te-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }
+  .te-size-select { width: auto; padding: 7px 26px 7px 10px; font-size: 13px; }
+  .te-size-custom { width: 62px; padding: 7px 8px; font-size: 13px; }
+  .te-btn.te-active { color: var(--accent); border-color: var(--accent); background: var(--panel-3); }
+  .te-dirty { color: var(--accent); font-size: 18px; line-height: 1; margin-left: 2px; visibility: hidden; }
+  .te-dirty.on { visibility: visible; }
+
+  /* palette swatch pills */
+  .te-swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .te-swatch {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 5px 3px 4px; border: 1px solid var(--border-2);
+    border-radius: 999px; background: var(--panel-3); cursor: pointer;
+    transition: border-color .15s, filter .15s;
+  }
+  .te-swatch:hover { border-color: var(--accent); }
+  .te-swatch .sw-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; border: 1px solid rgba(255,255,255,.18); }
+  .te-swatch .sw-hex { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); }
+  .te-swatch .sw-btn {
+    appearance: none; background: transparent; border: none; color: var(--muted-2);
+    cursor: pointer; padding: 2px; border-radius: 5px; display: inline-flex; line-height: 0;
+  }
+  .te-swatch .sw-btn:hover { color: var(--text); background: var(--panel-2); }
+  .te-swatch.add { border-style: dashed; color: var(--muted); padding: 5px 10px; }
+  .te-swatch.add:hover { color: var(--accent); }
+
+  /* editing surfaces */
+  .te-main { flex: 1; min-height: 0; display: flex; }
+  .te-surface, .te-source { flex: 1; min-height: 0; }
+  .te-surface {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 16px; overflow: auto;
+    font-size: 18px; line-height: 1.6; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .te-surface:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(92,124,255,.18); }
+  .te-surface:empty::before { content: attr(data-placeholder); color: var(--muted-2); pointer-events: none; }
+  .te-surface span { border-radius: 2px; }
+  .te-source {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 16px; resize: none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6; color: #c7d0dc;
+  }
+
+  /* examples modal rows */
+  .te-example-item {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--panel-2); padding: 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .te-example-head { display: flex; align-items: center; gap: 8px; }
+  .te-example-head input { flex: 1; }
+  .te-example-item textarea {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; min-height: 70px;
+  }
+  #examplesList { display: flex; flex-direction: column; gap: 12px; }
+
+  /* color modal */
+  .te-color-row { display: flex; align-items: center; gap: 12px; }
+  .te-color-row input[type="color"] {
+    width: 52px; height: 40px; padding: 2px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; flex: none;
+  }
+
+  /* AI loading overlay */
+  .te-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(5,8,12,.66); backdrop-filter: blur(3px);
+    display: grid; place-items: center;
+  }
+  .te-overlay[hidden] { display: none; }
+  .te-overlay-card {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 26px 34px; box-shadow: var(--shadow); text-align: center;
+  }
+  .te-overlay-text { color: var(--text); font-weight: 600; }
+  .te-overlay-sub { color: var(--muted); font-size: 12px; margin-top: -8px; }
 </style>
 </head>
 <body>
@@ -510,9 +603,46 @@
   </section>
 
   <section class="tab-panel" id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
-    <div class="placeholder">
-      <h2>Text Editor</h2>
-      <p>Coming soon.</p>
+    <div class="text-editor">
+      <!-- preset row: each preset is a category holding a set of AI style examples -->
+      <div class="row">
+        <label class="field grow">
+          <span>Preset <em>(AI example set)</em></span>
+          <select id="tePresetSelect"></select>
+        </label>
+        <div class="btn-group">
+          <button class="btn ghost iconbtn" id="tePresetExamplesBtn" title="Edit this preset's examples" aria-label="Edit examples" data-icon="list" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="tePresetRenameBtn" title="Rename preset" aria-label="Rename preset" data-icon="pencil" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="tePresetDeleteBtn" title="Delete preset" aria-label="Delete preset" data-icon="trash-2" data-icon-size="16"></button>
+          <button class="btn ghost iconbtn" id="tePresetAddBtn" title="Add preset" aria-label="Add preset" data-icon="plus" data-icon-size="16"></button>
+        </div>
+      </div>
+
+      <!-- toolbar -->
+      <div class="te-toolbar">
+        <div class="te-toolbar-group">
+          <button class="btn ghost small te-btn" id="teSourceToggle" title="Toggle tag source view"></button>
+        </div>
+        <div class="te-sep"></div>
+        <div class="te-toolbar-group">
+          <span class="te-label">Size</span>
+          <select class="te-size-select" id="teSize"></select>
+          <input class="te-size-custom" type="number" id="teSizeCustom" min="1" max="200" step="1" placeholder="px" title="Apply a custom size (px)" />
+        </div>
+        <div class="te-sep"></div>
+        <div class="te-swatches" id="teSwatches"></div>
+        <div class="spacer"></div>
+        <div class="te-toolbar-group">
+          <button class="btn ghost small" id="teCopyBtn">Copy tags</button>
+          <button class="btn primary small" id="teAiBtn">AI format</button>
+        </div>
+      </div>
+
+      <!-- editing surfaces (one visible at a time) -->
+      <div class="te-main">
+        <div id="wysiwyg" class="te-surface" contenteditable="true" spellcheck="false" data-placeholder="Type or paste a description…"></div>
+        <textarea id="sourceArea" class="te-source" spellcheck="false" placeholder="&lt;font color='#a2bc84'&gt;...&lt;/font&gt;" hidden></textarea>
+      </div>
     </div>
   </section>
   </main>
@@ -600,6 +730,87 @@
     </div>
   </div>
 
+  <!-- ============ ADD-COLOR MODAL ============ -->
+  <div class="modal-backdrop" id="colorModal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="colorModalTitle">
+      <div class="modal-head">
+        <h2 id="colorModalTitle">Add color</h2>
+        <button class="icon-btn" id="colorModalClose" title="Close" aria-label="Close" data-icon="x"></button>
+      </div>
+      <div class="modal-body">
+        <div class="te-color-row">
+          <input type="color" id="colorPicker" value="#a2bc84" />
+          <label class="field grow">
+            <span>Hex</span>
+            <input type="text" id="colorHex" value="#a2bc84" spellcheck="false" placeholder="#a2bc84" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Name <em>(optional)</em></span>
+          <input type="text" id="colorName" placeholder="e.g. Keyword (yellow)" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn ghost" id="colorCancel">Cancel</button>
+        <button class="btn primary" id="colorSave">Add color</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ AI FORMAT LOADING OVERLAY ============ -->
+  <div class="te-overlay" id="aiOverlay" hidden>
+    <div class="te-overlay-card">
+      <div class="spinner"></div>
+      <div class="te-overlay-text">Formatting with AI…</div>
+      <div class="te-overlay-sub" id="aiOverlaySub"></div>
+      <button class="btn ghost" id="aiCancelBtn">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ AI EXAMPLES MODAL ============ -->
+  <div class="modal-backdrop" id="examplesModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="examplesModalTitle">
+      <div class="modal-head">
+        <h2 id="examplesModalTitle">Examples</h2>
+        <button class="icon-btn" id="examplesModalClose" title="Close" aria-label="Close" data-icon="x"></button>
+      </div>
+      <div class="modal-body">
+        <div class="field-hint">Examples for <strong id="examplesPresetName">this preset</strong>, sent to the AI as few-shot guidance. Each should be a finished description using your <code>&lt;font&gt;</code> tags.</div>
+        <div id="examplesList"></div>
+        <div class="btn-group">
+          <button class="btn ghost small" id="exampleAddBtn">+ Add blank</button>
+          <button class="btn ghost small" id="exampleAddCurrentBtn">+ Add current editor text</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn primary" id="examplesDone">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DOCUMENT NAME MODAL (save / rename) ============ -->
+  <div class="modal-backdrop" id="teNameModal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="teNameTitle">
+      <div class="modal-head">
+        <h2 id="teNameTitle">Save document</h2>
+        <button class="icon-btn" id="teNameClose" title="Close" aria-label="Close" data-icon="x"></button>
+      </div>
+      <div class="modal-body">
+        <label class="field">
+          <span>Document name</span>
+          <input type="text" id="teNameInput" placeholder="e.g. Wisp of Lightning" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <div class="spacer"></div>
+        <button class="btn ghost" id="teNameCancel">Cancel</button>
+        <button class="btn primary" id="teNameSave">Save</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
 <script>
@@ -637,6 +848,13 @@
     "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
     "chevron-up": '<path d="m18 15-6-6-6 6"/>',
     "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+    "code": '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+    "type": '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    "palette": '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+    "copy": '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    "save": '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+    "sparkles": '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+    "list": '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
   };
   function icon(name, size = 18) {
     const tpl = document.createElement("template");
@@ -651,11 +869,12 @@
       return v.toString(16);
     });
   }
-  async function api(method, url, body) {
+  async function api(method, url, body, signal) {
     const res = await fetch(url, {
       method,
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     const ct = res.headers.get("content-type") || "";
     const data = ct.includes("application/json") ? await res.json() : await res.text();
@@ -692,16 +911,16 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (t.className = "toast"), 2800);
   }
-  async function copyText(text) {
+  async function copyText(text, msg = "Copied to clipboard.") {
     try {
       await navigator.clipboard.writeText(text);
-      toast("Prompt copied to clipboard.");
+      toast(msg);
     } catch {
       const ta = el("textarea", { value: text });
       ta.style.cssText = "position:fixed;opacity:0;top:0";
       document.body.append(ta);
       ta.select();
-      try { document.execCommand("copy"); toast("Prompt copied to clipboard."); }
+      try { document.execCommand("copy"); toast(msg); }
       catch { toast("Could not copy.", true); }
       ta.remove();
     }
@@ -1445,6 +1664,627 @@
       .catch((e) => { $("#exportStatus").textContent = "Downloaded; disk save failed."; toast(e.message, true); logMsg("Export save failed: " + e.message, "error"); });
   }
 
+  // ================= TEXT EDITOR (DOS2 <font> markup) =================
+  // Internal model: a flat run list inside #wysiwyg. A run is a <span data-color data-size>
+  // (inline style mirrors the attributes for display only); unstyled body text is a bare text
+  // node; line breaks are literal "\n" (the surface is white-space:pre-wrap). data-* are the
+  // source of truth — style is never read back (it would return rgb(...)).
+  const PREVIEW_BASE_PX = 18;                 // #wysiwyg base font-size; size='N' renders as N px
+  const SIZE_OPTIONS = [14, 16, 18, 20, 24, 28, 32, 36, 48];
+  let textStore = { palette: [], presets: [] };
+  let textEditorReady = false;
+  let currentPresetId = null;
+  let sourceMode = false;
+  let savedOffsets = null;                    // last non-collapsed selection (survives toolbar focus loss)
+  let aiRunning = false;
+  let tpNameMode = "add";
+  let scratchTimer = null;
+
+  const editorEl = () => $("#wysiwyg");
+
+  // ----- run helpers -----
+  function runNode(color, size, text) {
+    if (!color && !size) return document.createTextNode(text);
+    const span = document.createElement("span");
+    if (color) { span.dataset.color = color; span.style.color = color; }
+    if (size)  { span.dataset.size = String(size); span.style.fontSize = size + "px"; }
+    span.textContent = text;
+    return span;
+  }
+  function buildRunNodes(tokens) {
+    const frag = document.createDocumentFragment();
+    for (const t of tokens) {
+      if (t.break) frag.appendChild(document.createTextNode("\n"));
+      else if (t.text) frag.appendChild(runNode(t.color || null, t.size || null, t.text));
+    }
+    return frag;
+  }
+  // nearest ancestor span wins (innermost override); stops at `root`
+  function effectiveStyle(node, root) {
+    let color = null, size = null;
+    let el = node.parentNode;
+    while (el && el !== root && el.nodeType === 1) {
+      if (el.dataset) {
+        if (color === null && el.dataset.color) color = el.dataset.color;
+        if (size === null && el.dataset.size) size = el.dataset.size;
+      }
+      el = el.parentNode;
+    }
+    return { color, size: size ? Number(size) : null };
+  }
+  // DOM subtree -> token list; splits text on "\n" into text/break tokens
+  function walkToTokens(root) {
+    const tokens = [];
+    const pushText = (text, st) => {
+      const parts = text.split("\n");
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) tokens.push({ break: true });
+        if (parts[i]) tokens.push({ text: parts[i], color: st.color, size: st.size });
+      }
+    };
+    (function rec(node) {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) { if (child.nodeValue) pushText(child.nodeValue, effectiveStyle(child, root)); }
+        else if (child.nodeType === 1) {
+          const tag = child.tagName.toLowerCase();
+          if (tag === "br") tokens.push({ break: true });
+          else if (tag === "script" || tag === "style" || tag === "noscript") continue;
+          else {
+            if (/^(div|p|li)$/.test(tag) && tokens.length && !tokens[tokens.length - 1].break) tokens.push({ break: true });
+            rec(child);
+          }
+        }
+      }
+    })(root);
+    return tokens;
+  }
+  function coalesce(tokens) {
+    const out = [];
+    for (const t of tokens) {
+      if (t.break) { out.push({ break: true }); continue; }
+      if (!t.text) continue;
+      const prev = out[out.length - 1];
+      const color = t.color || null, size = t.size || null;
+      if (prev && !prev.break && prev.color === color && prev.size === size) prev.text += t.text;
+      else out.push({ text: t.text, color, size });
+    }
+    return out;
+  }
+
+  // ----- linear selection offset model (chars only; "\n" counts as 1) -----
+  function offsetOf(root, container, offset) {
+    let target;
+    if (container.nodeType === 3) target = { node: container, offset: Math.min(offset, container.nodeValue.length) };
+    else target = { elem: container, childIndex: offset };
+    let pos = 0, found = null;
+    (function walk(node) {
+      if (found != null) return;
+      const kids = node.childNodes;
+      for (let i = 0; i < kids.length; i++) {
+        if (found != null) return;
+        if (target.elem === node && target.childIndex === i) { found = pos; return; }
+        const child = kids[i];
+        if (child.nodeType === 3) {
+          if (target.node === child) { found = pos + target.offset; return; }
+          pos += child.nodeValue.length;
+        } else if (child.nodeType === 1) {
+          if (child.tagName.toLowerCase() === "br") pos += 1;   // defensive; editor uses "\n"
+          else walk(child);
+        }
+      }
+      if (target.elem === node && target.childIndex === kids.length && found == null) found = pos;
+    })(root);
+    return found != null ? found : pos;
+  }
+  function locate(root, index) {
+    let pos = 0, result = null;
+    (function walk(node) {
+      if (result) return;
+      const kids = node.childNodes;
+      for (let i = 0; i < kids.length; i++) {
+        if (result) return;
+        const child = kids[i];
+        if (child.nodeType === 3) {
+          const len = child.nodeValue.length;
+          if (index <= pos + len) { result = { node: child, offset: Math.max(0, index - pos) }; return; }
+          pos += len;
+        } else if (child.nodeType === 1) {
+          if (child.tagName.toLowerCase() === "br") { if (index <= pos) { result = { node, offset: i }; return; } pos += 1; }
+          else walk(child);
+        }
+      }
+    })(root);
+    return result || { node: root, offset: root.childNodes.length };
+  }
+  function getSelectionOffsets() {
+    const root = editorEl();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+    const a = offsetOf(root, range.startContainer, range.startOffset);
+    const b = offsetOf(root, range.endContainer, range.endOffset);
+    return a <= b ? { start: a, end: b } : { start: b, end: a };
+  }
+  function rangeFromOffsets(start, end) {
+    const root = editorEl();
+    const a = locate(root, start), b = locate(root, end);
+    const range = document.createRange();
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+    return range;
+  }
+  function restoreSelectionOffsets(start, end) {
+    try {
+      const range = rangeFromOffsets(start, end);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {}
+  }
+  function trackSelection() {
+    if (sourceMode) return;
+    const off = getSelectionOffsets();
+    if (off && off.start !== off.end) savedOffsets = off;
+  }
+
+  // ----- selection edits via a char-cell model (aligns 1:1 with the offset model) -----
+  // Each text char and each line break is one "cell". Rebuilding from cells sidesteps
+  // Range.extractContents pitfalls (e.g. a selection that exactly fills a styled span, where
+  // the leftover empty span would otherwise re-impose its style on the re-inserted text).
+  function editorToCells() {
+    const cells = [];
+    for (const t of coalesce(walkToTokens(editorEl()))) {
+      if (t.break) { cells.push({ br: true }); continue; }
+      for (let i = 0; i < t.text.length; i++) cells.push({ ch: t.text[i], color: t.color || null, size: t.size || null });
+    }
+    return cells;
+  }
+  function cellsToTokens(cells) {
+    const tokens = [];
+    for (const cell of cells) {
+      if (cell.br) { tokens.push({ break: true }); continue; }
+      const prev = tokens[tokens.length - 1];
+      if (prev && !prev.break && prev.color === cell.color && prev.size === cell.size) prev.text += cell.ch;
+      else tokens.push({ text: cell.ch, color: cell.color, size: cell.size });
+    }
+    return tokens;
+  }
+  function rebuildFromCells(cells) {
+    const root = editorEl();
+    const frag = buildRunNodes(cellsToTokens(cells));
+    while (root.firstChild) root.removeChild(root.firstChild);
+    root.appendChild(frag);
+  }
+  function applyStyle(patch) {
+    if (sourceMode) return;
+    let off = getSelectionOffsets();
+    if (!off || off.start === off.end) off = savedOffsets;
+    if (!off || off.start === off.end) { toast("Select some text first."); return; }
+    const cells = editorToCells();
+    const lo = Math.max(0, Math.min(off.start, cells.length)), hi = Math.max(0, Math.min(off.end, cells.length));
+    for (let i = lo; i < hi; i++) {
+      if (cells[i].br) continue;                             // never style a break
+      if ("color" in patch) cells[i].color = patch.color || null;
+      if ("size" in patch) cells[i].size = patch.size || null;
+    }
+    rebuildFromCells(cells);
+    editorEl().focus();
+    restoreSelectionOffsets(off.start, off.end);
+    savedOffsets = { start: off.start, end: off.end };
+    markDirty();
+  }
+
+  // ----- Enter / paste replace the selection with unstyled body text or a break -----
+  function replaceSelection(text) {
+    const off = getSelectionOffsets() || savedOffsets;
+    if (!off) return;
+    const cells = editorToCells();
+    const lo = Math.max(0, Math.min(off.start, cells.length)), hi = Math.max(0, Math.min(off.end, cells.length));
+    const insert = [];
+    for (let i = 0; i < text.length; i++) insert.push(text[i] === "\n" ? { br: true } : { ch: text[i], color: null, size: null });
+    cells.splice(lo, hi - lo, ...insert);
+    rebuildFromCells(cells);
+    const caret = lo + insert.length;
+    restoreSelectionOffsets(caret, caret);
+    savedOffsets = null;
+    markDirty();
+  }
+  function onEditorBeforeInput(e) {
+    if (e.inputType === "insertParagraph" || e.inputType === "insertLineBreak") { e.preventDefault(); replaceSelection("\n"); }
+  }
+  function onEditorPaste(e) {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData)?.getData("text/plain") || "";
+    if (text) replaceSelection(text);
+  }
+
+  // ----- parse (import) DOS2 string -> nodes; serialize (export) nodes -> flat DOS2 -----
+  function validHex(s) {
+    return typeof s === "string" && /^#[0-9a-fA-F]{6}$/.test(s.trim()) ? s.trim().toLowerCase() : null;
+  }
+  function parseSize(s) { const n = parseInt(s, 10); return Number.isFinite(n) && n >= 1 && n <= 200 ? n : null; }
+  function parseDOS2ToNodes(str) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = String(str == null ? "" : str);          // inert: no scripts run, no resources load
+    const tokens = [];
+    (function walk(node, ctx) {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) {
+          const text = child.nodeValue.replace(/[\t\r\n]+/g, " ");   // source whitespace is insignificant; <br> makes breaks
+          if (text) tokens.push({ text, color: ctx.color, size: ctx.size });
+        } else if (child.nodeType === 1) {
+          const tag = child.tagName.toLowerCase();
+          if (tag === "br") tokens.push({ break: true });
+          else if (tag === "script" || tag === "style" || tag === "noscript") continue;
+          else if (tag === "font") walk(child, {
+            color: validHex(child.getAttribute("color")) || ctx.color,
+            size: parseSize(child.getAttribute("size")) ?? ctx.size,
+          });
+          else { const block = /^(div|p|li)$/.test(tag); walk(child, ctx); if (block) tokens.push({ break: true }); }
+        }
+      }
+    })(tpl.content, { color: null, size: null });
+    return buildRunNodes(coalesce(tokens));
+  }
+  function setEditorFromDOS2(str) {
+    const root = editorEl();
+    while (root.firstChild) root.removeChild(root.firstChild);
+    root.appendChild(parseDOS2ToNodes(str));
+  }
+  function escapeText(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function serializeToDOS2() {
+    let tokens = coalesce(walkToTokens(editorEl()));
+    while (tokens.length && tokens[tokens.length - 1].break) tokens.pop();   // drop trailing blank lines
+    let s = "";
+    for (const t of tokens) {
+      if (t.break) { s += "<br>"; continue; }
+      const txt = escapeText(t.text);
+      if (!t.color && !t.size) { s += txt; continue; }
+      let attrs = "";
+      if (t.color) attrs += ` color='${t.color}'`;
+      if (t.size) attrs += ` size='${t.size}'`;
+      s += `<font${attrs}>${txt}</font>`;
+    }
+    return s;
+  }
+  function serializePlainText() {
+    let s = "";
+    for (const t of walkToTokens(editorEl())) s += t.break ? "\n" : (t.text || "");
+    return s;
+  }
+  function stripTagsClient(s) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = String(s || "");
+    return (tpl.content.textContent || "").replace(/[\t\r\n]+/g, " ").trim();
+  }
+  const getCurrentSource = () => (sourceMode ? $("#sourceArea").value.trim() : serializeToDOS2());
+  const currentPlainText = () => (sourceMode ? stripTagsClient($("#sourceArea").value) : serializePlainText());
+
+  // ----- working-text autosave (scratch survives reloads via localStorage) -----
+  function markDirty() { clearTimeout(scratchTimer); scratchTimer = setTimeout(saveScratch, 400); }
+  function saveScratch() { try { localStorage.setItem("teScratch", getCurrentSource()); } catch {} }
+
+  // ----- source view toggle -----
+  function renderSourceToggle() {
+    const btn = $("#teSourceToggle");
+    btn.innerHTML = "";
+    btn.classList.toggle("te-active", sourceMode);
+    btn.append(icon(sourceMode ? "type" : "code", 15), el("span", { textContent: sourceMode ? "Visual" : "Tags" }));
+    btn.title = sourceMode ? "Back to the visual editor" : "Show the raw tag source";
+  }
+  function setStyleControlsEnabled(enabled) {
+    $("#teSize").disabled = !enabled;
+    $("#teSizeCustom").disabled = !enabled;
+    const sw = $("#teSwatches");
+    sw.style.opacity = enabled ? "" : ".45";
+    sw.style.pointerEvents = enabled ? "" : "none";
+  }
+  function toggleSourceView() {
+    if (!sourceMode) {
+      $("#sourceArea").value = serializeToDOS2();
+      sourceMode = true;
+      $("#wysiwyg").hidden = true; $("#sourceArea").hidden = false;
+      setStyleControlsEnabled(false);
+    } else {
+      setEditorFromDOS2($("#sourceArea").value);
+      sourceMode = false;
+      $("#sourceArea").hidden = true; $("#wysiwyg").hidden = false;
+      setStyleControlsEnabled(true);
+      markDirty();
+    }
+    savedOffsets = null;
+    renderSourceToggle();
+  }
+
+  // ----- palette -----
+  function renderPalette() {
+    const host = $("#teSwatches");
+    host.innerHTML = "";
+    for (const c of textStore.palette) {
+      const pill = el("div", { className: "te-swatch", title: `Apply ${c.name || c.hex}` },
+        el("span", { className: "sw-dot", style: "background:" + c.hex }),
+        el("span", { className: "sw-hex", textContent: c.hex }),
+      );
+      const copyBtn = el("button", { className: "sw-btn", type: "button", title: "Copy hex" }, icon("copy", 13));
+      const rmBtn = el("button", { className: "sw-btn", type: "button", title: "Remove color" }, icon("x", 13));
+      for (const b of [copyBtn, rmBtn, pill]) b.addEventListener("mousedown", (e) => e.preventDefault());
+      copyBtn.addEventListener("click", (e) => { e.stopPropagation(); copyText(c.hex, `Copied ${c.hex}`); });
+      rmBtn.addEventListener("click", (e) => { e.stopPropagation(); removeColor(c.id); });
+      pill.addEventListener("click", () => applyStyle({ color: c.hex }));
+      pill.append(copyBtn, rmBtn);
+      host.append(pill);
+    }
+    const add = el("button", { className: "te-swatch add", type: "button", title: "Add a color" }, icon("plus", 14), el("span", { textContent: "Color" }));
+    add.addEventListener("mousedown", (e) => e.preventDefault());
+    add.addEventListener("click", openColorModal);
+    host.append(add);
+  }
+  function normalizeHexInput(s) {
+    let t = String(s || "").trim();
+    if (t && t[0] !== "#") t = "#" + t;
+    return /^#[0-9a-fA-F]{6}$/.test(t) ? t.toLowerCase() : null;
+  }
+  function openColorModal() {
+    $("#colorPicker").value = "#a2bc84";
+    $("#colorHex").value = "#a2bc84";
+    $("#colorName").value = "";
+    openModal("#colorModal");
+    setTimeout(() => { const i = $("#colorHex"); i.focus(); i.select(); }, 30);
+  }
+  async function saveColor() {
+    const hex = normalizeHexInput($("#colorHex").value);
+    if (!hex) { toast("Enter a valid 6-digit hex color.", true); return; }
+    const name = $("#colorName").value.trim() || hex;
+    textStore.palette.push({ id: uuid(), name, hex });
+    renderPalette();
+    closeModal("#colorModal");
+    await persistTextStore();
+    toast("Color added.");
+  }
+  async function removeColor(id) {
+    textStore.palette = textStore.palette.filter((c) => c.id !== id);
+    renderPalette();
+    await persistTextStore();
+  }
+
+  // ----- size -----
+  function renderSizeSelect() {
+    const sel = $("#teSize");
+    sel.innerHTML = "";
+    sel.append(el("option", { value: "", textContent: "Size…" }));
+    sel.append(el("option", { value: "default", textContent: "Default (clear)" }));
+    for (const n of SIZE_OPTIONS) sel.append(el("option", { value: String(n), textContent: `${n} px` }));
+    sel.value = "";
+  }
+  function applyCustomSize() {
+    const n = parseInt($("#teSizeCustom").value, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 200) applyStyle({ size: n });
+    else if ($("#teSizeCustom").value.trim()) toast("Size must be between 1 and 200.", true);
+  }
+
+  // ----- presets (each holds a set of AI example descriptions for a category of asset) -----
+  // NOTE: names are text-namespaced (curTextPreset/renderTextPresets/…) to avoid colliding with
+  // the image tab's currentPreset/renderPresetSelect/presetNameMode/openPresetNameModal/savePresetName.
+  const curTextPreset = () => textStore.presets.find((p) => p.id === currentPresetId) || null;
+  function renderTextPresets() {
+    const sel = $("#tePresetSelect");
+    sel.innerHTML = "";
+    if (!textStore.presets.length) {
+      sel.append(el("option", { value: "", textContent: "— No presets —" }));
+    } else {
+      for (const p of textStore.presets)
+        sel.append(el("option", { value: p.id, textContent: `${p.name} (${p.examples.length})`, selected: p.id === currentPresetId }));
+      sel.value = currentPresetId || "";
+    }
+    const has = !!curTextPreset();
+    $("#tePresetExamplesBtn").disabled = !has;
+    $("#tePresetRenameBtn").disabled = !has;
+    $("#tePresetDeleteBtn").disabled = !has;
+  }
+  function openTextPresetModal(mode) {
+    tpNameMode = mode;
+    $("#teNameTitle").textContent = mode === "rename" ? "Rename preset" : "New preset";
+    $("#teNameSave").textContent = mode === "rename" ? "Rename" : "Create";
+    $("#teNameInput").placeholder = "e.g. Nephilim Ability";
+    $("#teNameInput").value = mode === "rename" ? (curTextPreset()?.name || "") : "";
+    openModal("#teNameModal");
+    setTimeout(() => { const i = $("#teNameInput"); i.focus(); i.select(); }, 30);
+  }
+  async function saveTextPreset() {
+    const name = $("#teNameInput").value.trim();
+    if (!name) { toast("Enter a preset name.", true); return; }
+    if (tpNameMode === "rename") {
+      const p = curTextPreset(); if (p) p.name = name;
+    } else {
+      const p = { id: uuid(), name, examples: [] };
+      textStore.presets.push(p);
+      currentPresetId = p.id;
+    }
+    closeModal("#teNameModal");
+    renderTextPresets();
+    await persistTextStore();
+    toast(tpNameMode === "rename" ? "Preset renamed." : "Preset created.");
+  }
+  async function deletePreset() {
+    const p = curTextPreset(); if (!p) return;
+    const n = p.examples.length;
+    if (!confirm(`Delete preset "${p.name}" and its ${n} example${n === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    textStore.presets = textStore.presets.filter((x) => x.id !== p.id);
+    currentPresetId = textStore.presets[0]?.id || null;
+    renderTextPresets();
+    await persistTextStore();
+    toast("Preset deleted.");
+  }
+
+  // ----- AI examples (scoped to the current preset) -----
+  function renderExamples() {
+    const p = curTextPreset();
+    $("#examplesPresetName").textContent = p ? p.name : "this preset";
+    const host = $("#examplesList");
+    host.innerHTML = "";
+    if (!p) { host.append(el("div", { className: "empty-hint", textContent: "Create a preset first." })); return; }
+    if (!p.examples.length) host.append(el("div", { className: "empty-hint", textContent: "No examples yet. Add one to guide the AI." }));
+    p.examples.forEach((ex, idx) => {
+      const title = el("input", { type: "text", value: ex.title || "", placeholder: "Example title (e.g. Wisp)" });
+      title.addEventListener("input", () => { ex.title = title.value; });
+      const rm = el("button", { className: "layer-btn", type: "button", title: "Remove example" }, icon("trash-2", 15));
+      rm.addEventListener("click", () => { p.examples.splice(idx, 1); renderExamples(); });
+      const ta = el("textarea", { value: ex.text || "", placeholder: "<font color='#a2bc84'>Formatted description…</font>" });
+      ta.addEventListener("input", () => { ex.text = ta.value; });
+      host.append(el("div", { className: "te-example-item" },
+        el("div", { className: "te-example-head" }, title, rm), ta,
+      ));
+    });
+  }
+  function openExamplesModal() {
+    if (!curTextPreset()) { toast("Create a preset first.", true); return; }
+    renderExamples();
+    openModal("#examplesModal");
+  }
+  function addExample() {
+    const p = curTextPreset(); if (!p) return;
+    p.examples.push({ id: uuid(), title: "", text: "" });
+    renderExamples();
+  }
+  function addCurrentAsExample() {
+    const p = curTextPreset(); if (!p) return;
+    const text = getCurrentSource();
+    if (!text) { toast("The editor is empty.", true); return; }
+    p.examples.push({ id: uuid(), title: "", text });
+    renderExamples();
+    toast("Added the current text as an example.");
+  }
+  async function closeExamples() {
+    const p = curTextPreset();
+    if (p) p.examples = p.examples.filter((e) => (e.text && e.text.trim()) || (e.title && e.title.trim()));
+    closeModal("#examplesModal");
+    renderTextPresets();                  // example counts changed
+    await persistTextStore();
+  }
+
+  // ----- AI format (runs on the current editor text; shows a cancelable overlay) -----
+  let aiController = null;
+  function showAiOverlay(on) {
+    $("#aiOverlay").hidden = !on;
+    document.body.style.overflow = on ? "hidden" : (anyModalOpen() ? "hidden" : "");
+  }
+  function cancelAiFormat() { if (aiController) aiController.abort(); }
+  async function runAiFormat() {
+    if (aiRunning) return;
+    const p = curTextPreset();
+    const text = currentPlainText().trim();
+    if (!text) { toast("Type a description in the editor first.", true); return; }
+    aiRunning = true;
+    aiController = new AbortController();
+    $("#aiOverlaySub").textContent = p ? `Using the "${p.name}" examples` : "";
+    showAiOverlay(true);
+    try {
+      const res = await api("POST", "/api/text/format", { text, presetId: currentPresetId }, aiController.signal);
+      setEditorFromDOS2(res.result || "");
+      if (sourceMode) {                    // show the colored result rather than raw tags
+        $("#sourceArea").hidden = true; $("#wysiwyg").hidden = false;
+        sourceMode = false; setStyleControlsEnabled(true); renderSourceToggle();
+      }
+      savedOffsets = null;
+      markDirty();
+      toast("Formatted with AI.");
+    } catch (e) {
+      if (e.name !== "AbortError") toast(e.message || "AI formatting failed.", true);
+    } finally {
+      aiRunning = false; aiController = null; showAiOverlay(false);
+    }
+  }
+
+  // ----- store persistence -----
+  async function persistTextStore() {
+    try { await api("PUT", "/api/text", clone(textStore)); }
+    catch (e) { toast("Couldn't save changes: " + e.message, true); }
+  }
+  async function loadTextStore() {
+    const data = await api("GET", "/api/text");
+    textStore = {
+      palette: Array.isArray(data.palette) ? data.palette : [],
+      presets: (Array.isArray(data.presets) ? data.presets : []).map((p) => ({
+        id: p.id, name: p.name, examples: Array.isArray(p.examples) ? p.examples : [],
+      })),
+    };
+    if (!curTextPreset()) currentPresetId = textStore.presets[0]?.id || null;
+  }
+
+  // ----- shared modal open/close (handles stacked modals) -----
+  const anyModalOpen = () => !!document.querySelector(".modal-backdrop:not([hidden])");
+  function openModal(sel) { $(sel).hidden = false; document.body.style.overflow = "hidden"; }
+  function closeModal(sel) { $(sel).hidden = true; if (!anyModalOpen()) document.body.style.overflow = ""; }
+
+  // ----- wire up (once, on first init) -----
+  function wireTextEditor() {
+    $("#teSourceToggle").addEventListener("click", toggleSourceView);
+    $("#teCopyBtn").addEventListener("click", () => {
+      const s = getCurrentSource();
+      if (!s) { toast("Nothing to copy yet.", true); return; }
+      copyText(s, "Tags copied to clipboard.");
+    });
+    $("#teAiBtn").addEventListener("click", runAiFormat);
+    $("#aiCancelBtn").addEventListener("click", cancelAiFormat);
+    $("#teSize").addEventListener("change", () => {
+      const v = $("#teSize").value;
+      if (v === "default") applyStyle({ size: null });
+      else if (v) applyStyle({ size: Number(v) });
+      $("#teSize").value = "";
+    });
+    $("#teSizeCustom").addEventListener("change", applyCustomSize);
+    $("#teSizeCustom").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyCustomSize(); } });
+
+    $("#tePresetSelect").addEventListener("change", () => {
+      const id = $("#tePresetSelect").value;
+      if (id) { currentPresetId = id; renderTextPresets(); }
+    });
+    $("#tePresetExamplesBtn").addEventListener("click", openExamplesModal);
+    $("#tePresetRenameBtn").addEventListener("click", () => openTextPresetModal("rename"));
+    $("#tePresetDeleteBtn").addEventListener("click", deletePreset);
+    $("#tePresetAddBtn").addEventListener("click", () => openTextPresetModal("add"));
+
+    // color modal
+    $("#colorPicker").addEventListener("input", () => { $("#colorHex").value = $("#colorPicker").value; });
+    $("#colorHex").addEventListener("input", () => { const v = normalizeHexInput($("#colorHex").value); if (v) $("#colorPicker").value = v; });
+    $("#colorSave").addEventListener("click", saveColor);
+    $("#colorCancel").addEventListener("click", () => closeModal("#colorModal"));
+    $("#colorModalClose").addEventListener("click", () => closeModal("#colorModal"));
+    $("#colorHex").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveColor(); } });
+
+    // examples modal
+    $("#exampleAddBtn").addEventListener("click", addExample);
+    $("#exampleAddCurrentBtn").addEventListener("click", addCurrentAsExample);
+    $("#examplesDone").addEventListener("click", closeExamples);
+    $("#examplesModalClose").addEventListener("click", closeExamples);
+
+    // preset name modal
+    $("#teNameSave").addEventListener("click", saveTextPreset);
+    $("#teNameCancel").addEventListener("click", () => closeModal("#teNameModal"));
+    $("#teNameClose").addEventListener("click", () => closeModal("#teNameModal"));
+    $("#teNameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveTextPreset(); } });
+
+    // editor surface
+    const ed = editorEl();
+    ed.addEventListener("input", () => { markDirty(); savedOffsets = null; });
+    ed.addEventListener("beforeinput", onEditorBeforeInput);
+    ed.addEventListener("paste", onEditorPaste);
+    document.addEventListener("selectionchange", trackSelection);
+  }
+  async function initTextEditor() {
+    renderSizeSelect();
+    renderSourceToggle();
+    $("#teCopyBtn").prepend(icon("copy", 15));
+    $("#teAiBtn").prepend(icon("sparkles", 15));
+    wireTextEditor();
+    try { await loadTextStore(); }
+    catch (e) { toast("Couldn't load text editor data: " + (e.message || e), true); }
+    renderPalette();
+    renderTextPresets();
+    try { const scratch = localStorage.getItem("teScratch"); if (scratch) setEditorFromDOS2(scratch); } catch {}
+  }
+
   // ---------------- wire up events ----------------
   $("#presetSelect").addEventListener("change", () => {
     selectedPresetId = $("#presetSelect").value;
@@ -1463,7 +2303,7 @@
   $("#subEditBtn").addEventListener("click", openSubEdit);
   $("#subDeleteBtn").addEventListener("click", deleteSubPresetDirect);
   $("#subAddBtn").addEventListener("click", openSubAdd);
-  $("#copyPromptBtn").addEventListener("click", () => { if (lastResult) copyText(lastResult.promptUsed); });
+  $("#copyPromptBtn").addEventListener("click", () => { if (lastResult) copyText(lastResult.promptUsed, "Prompt copied to clipboard."); });
   $("#downloadBtn").addEventListener("click", (e) => { if (!lastResult) e.preventDefault(); });
   $("#logClear").addEventListener("click", clearLog);
 
@@ -1487,9 +2327,17 @@
   // Backdrop clicks intentionally do NOT close the modal (see editor note above). Use ✕, Close, or Esc.
 
   document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); doGenerate(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (!$("#panel-text").hidden) runAiFormat();            // text tab: format the current text
+      else if (!$("#panel-image").hidden) doGenerate();       // image tab
+    }
     if (e.key === "Escape") {
-      if (!$("#exportBackdrop").hidden) closeExportModal();
+      if (!$("#aiOverlay").hidden) cancelAiFormat();
+      else if (!$("#examplesModal").hidden) closeExamples();
+      else if (!$("#colorModal").hidden) closeModal("#colorModal");
+      else if (!$("#teNameModal").hidden) closeModal("#teNameModal");
+      else if (!$("#exportBackdrop").hidden) closeExportModal();
       else if (!$("#subEditBackdrop").hidden) closeSubModal();
       else if (!$("#presetNameBackdrop").hidden) closePresetName();
     }
@@ -1504,6 +2352,7 @@
     });
     document.querySelectorAll(".tab-panel").forEach((p) => { p.hidden = p.id !== "panel-" + name; });
     try { localStorage.setItem("activeTab", name); } catch {}
+    if (name === "text" && !textEditorReady) { textEditorReady = true; initTextEditor(); }
   }
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
   (() => { let saved = null; try { saved = localStorage.getItem("activeTab"); } catch {} switchTab(saved === "text" ? "text" : "image"); })();
