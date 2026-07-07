@@ -541,6 +541,29 @@
   .te-name-chip:active { transform: translateY(1px); }
   .te-name-chip .chip-copy { color: var(--muted-2); display: inline-flex; line-height: 0; }
   .te-name-chip:hover .chip-copy { color: var(--accent); }
+  .te-name-chip .chip-name { color: #ed4d00; }   /* preview the DisplayName in its Nephilim orange */
+
+  /* Loaded-skill banner (AI-format context parsed from a pasted DB skill row) */
+  .te-skill-banner {
+    flex: none; display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 12px; margin-top: 10px;
+    border: 1px solid var(--border-2); border-radius: 10px; background: var(--panel-3);
+  }
+  .te-skill-banner[hidden] { display: none; }
+  .te-skill-banner .tsb-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .te-skill-banner .tsb-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .te-skill-banner .tsb-tag {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--accent); border: 1px solid var(--border-2); border-radius: 999px; padding: 2px 8px;
+  }
+  .te-skill-banner .tsb-title strong { color: var(--text); font-size: 14px; word-break: break-word; }
+  .te-skill-banner .tsb-vars { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tsb-var {
+    font-size: 12px; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px;
+  }
+  .tsb-var b { color: var(--accent); font-weight: 650; }
+  .tsb-var.skip { opacity: .5; }
 </style>
 </head>
 <body>
@@ -657,6 +680,16 @@
         </div>
       </div>
 
+      <!-- Loaded DB skill: grounds the AI formatter in the skill's mechanics + tooltip variables.
+           Populated by pasting a tab-separated skill row into the editor. -->
+      <div class="te-skill-banner" id="teSkillBanner" hidden>
+        <div class="tsb-main">
+          <div class="tsb-title"><span class="tsb-tag">Skill loaded</span><strong id="tsbName"></strong></div>
+          <div class="tsb-vars" id="tsbVars"></div>
+        </div>
+        <button class="btn ghost small" id="tsbClear" title="Clear the loaded skill">Clear</button>
+      </div>
+
       <!-- editing surfaces (one visible at a time) -->
       <div class="te-main">
         <div id="wysiwyg" class="te-surface" contenteditable="true" spellcheck="false" data-placeholder="Type or paste a description…"></div>
@@ -665,7 +698,7 @@
 
       <!-- AI-suggested names (populated after an AI format) -->
       <div class="te-names" id="teNames" hidden>
-        <div class="te-names-label">Suggested names <em>(click to copy)</em></div>
+        <div class="te-names-label">Suggested names <em>(click to copy colored DisplayName)</em></div>
         <div class="te-name-chips" id="teNameChips"></div>
       </div>
     </div>
@@ -1702,6 +1735,7 @@
   let sourceMode = false;
   let savedOffsets = null;                    // last non-collapsed selection (survives toolbar focus loss)
   let aiRunning = false;
+  let loadedSkill = null;                     // parsed DB skill row for the AI formatter (in memory only, not persisted)
   let tpNameMode = "add";
   let scratchTimer = null;
 
@@ -1921,7 +1955,120 @@
   function onEditorPaste(e) {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData)?.getData("text/plain") || "";
-    if (text) replaceSelection(text);
+    if (!text) return;
+    const skill = tryParseSkillRow(text);      // a pasted DB skill row is grounded into the AI formatter, not typed in
+    if (skill) { loadSkillContext(skill); return; }
+    replaceSelection(text);
+  }
+
+  // ----- Skill-row (tab-separated DB paste) parsing for the AI formatter -----
+  // A DOS2 skill row copied from the skills DB is: line 1 = column headers, line 2 = values
+  // (tab-separated, ~75 columns). We detect it, extract a curated set of mechanical columns, and
+  // turn StatsDescriptionParams (semicolon-separated, 1-indexed) into a numbered/labeled/classified
+  // variable list so the AI can weave the literal [1]/[2]/… tooltip tokens into the Description.
+  // The result is held in memory only (loadedSkill) — never persisted, never put in the editor DOM.
+  const SKILL_CONTEXT_KEYS = [
+    "DisplayName", "Ability", "SkillType", "Damage", "DamageType", "DamageMultiplier",
+    "Cooldown", "ActionPoints", "Range", "TargetRadius", "AreaRadius", "ExplodeRadius",
+    "Duration", "SurfaceType", "Requirement", "Tier",
+    "StatsDescription", "StatsDescriptionParams", "Description",
+  ];
+  const skillLookup = (map, key) => {
+    if (key in map) return map[key];
+    const lk = key.toLowerCase();
+    for (const k in map) if (k.toLowerCase() === lk) return map[k];
+    return "";
+  };
+  // StatusData:<StatusId>:<Field> → a readable label. The status id usually encodes meaning
+  // (HEALING_MED, PHYSICAL_OVER_TIME); we surface the raw id too so the model can infer when unsure.
+  function describeStatus(statusId, field) {
+    const id = String(statusId).toUpperCase(), f = String(field).toLowerCase();
+    let effect = "status effect";
+    if (id.includes("HEAL")) effect = "healing";
+    else if (id.includes("PHYSICAL") && id.includes("OVER_TIME")) effect = "physical damage over time";
+    else if (id.includes("OVER_TIME") || id.includes("DOT") || id.includes("BURN") || id.includes("POISON")) effect = "damage over time";
+    const amount = f.includes("heal") ? "heal amount" : f.includes("damage") ? "damage amount"
+                 : f.includes("duration") ? "duration" : field;
+    return `${effect} (${amount}, from status ${statusId})`;
+  }
+  function buildSkillContext(map) {
+    const statsDescription = skillLookup(map, "StatsDescription");
+    const rawParams        = skillLookup(map, "StatsDescriptionParams");
+    const displayName      = skillLookup(map, "DisplayName");
+    const description      = skillLookup(map, "Description");
+
+    const consumed = new Set();                                   // indices already printed by the stats line
+    for (const m of statsDescription.matchAll(/\[(\d+)\]/g)) consumed.add(Number(m[1]));
+
+    const params = rawParams.split(";").map((s) => s.trim()).filter(Boolean).map((rawTok, i) => {
+      const index = i + 1;
+      let kind = "stat", statusId = "", field = "", label = rawTok;
+      const sm = rawTok.match(/^StatusData:([^:]+):(.+)$/i);      // StatusData:<StatusId>:<Field>
+      if (sm) { kind = "status"; statusId = sm[1]; field = sm[2]; label = describeStatus(statusId, field); }
+      const rangeLike       = kind === "stat" && /range|radius/i.test(rawTok);   // targeting geometry -> lives in the stats line, not prose
+      const consumedByStats = consumed.has(index);
+      const use = !rangeLike && !consumedByStats;                 // damage/heal/DoT/duration -> weave; range/consumed -> skip
+      return { index, raw: rawTok, kind, statusId, field, label, rangeLike, consumedByStats, use };
+    });
+
+    const columns = {};
+    for (const key of SKILL_CONTEXT_KEYS) { const v = skillLookup(map, key); if (v) columns[key] = v; }
+
+    return {
+      // banner label: the internal Name id (e.g. SZ_S_KnivesOut) is always present and clean;
+      // fall back to the DisplayName with its <font> markup stripped, then a placeholder.
+      name: skillLookup(map, "Name") || String(displayName).replace(/<[^>]*>/g, "").trim() || "(unnamed skill)",
+      displayName, description, statsDescription,
+      statsDescriptionParams: rawParams, params, columns,
+    };
+  }
+  // A skill row must clear all three gates so ordinary prose (with a stray tab) is never swallowed.
+  const skillSentinelsOk = (hset) =>
+    hset.has("statsdescriptionparams") || (hset.has("statsdescription") && hset.has("displayname"));
+  function tryParseSkillRow(raw) {
+    const lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
+    while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+    if (lines.length < 2) return null;                           // gate 1: shape
+    if (!lines[0].includes("\t") || !lines[1].includes("\t")) return null;
+    const H = lines[0].split("\t"), V = lines[1].split("\t");
+    if (H.length < 8) return null;                               // gate 2: width (real rows are ~75)
+    const hset = new Set(H.map((h) => h.trim().toLowerCase()));
+    if (!skillSentinelsOk(hset)) return null;                    // gate 3: DOS2-specific sentinel columns
+    const map = {};
+    for (let i = 0; i < H.length; i++) {
+      const key = H[i].trim(); if (!key) continue;               // skip empty headers
+      const val = (V[i] ?? "").trim();                           // short value rows / trailing tabs -> ""
+      if (!(key in map) || (map[key] === "" && val)) map[key] = val;   // exact key; first non-empty wins (dup headers)
+    }
+    return buildSkillContext(map);
+  }
+  function renderSkillBanner() {
+    const wrap = $("#teSkillBanner");
+    if (!loadedSkill) { wrap.hidden = true; return; }
+    $("#tsbName").textContent = loadedSkill.name;
+    const host = $("#tsbVars"); host.innerHTML = "";
+    const params = loadedSkill.params || [];
+    if (!params.length) {
+      host.append(el("span", { className: "tsb-var skip", textContent: "no tooltip variables" }));
+    } else {
+      for (const p of params) {
+        host.append(el("span", { className: "tsb-var" + (p.use ? "" : " skip"), title: p.raw },
+          el("b", { textContent: `[${p.index}]` }),
+          el("span", { textContent: " " + p.label + (p.use ? "" : " · skip") }),
+        ));
+      }
+    }
+    wrap.hidden = false;
+  }
+  function loadSkillContext(skill) {
+    loadedSkill = skill;
+    renderSkillBanner();
+    const n = (skill.params || []).filter((p) => p.use).length;
+    toast(`Loaded skill "${skill.name}". AI format will use its mechanics${n ? ` and ${n} variable${n > 1 ? "s" : ""}` : ""}.`);
+  }
+  function clearSkillContext() {
+    loadedSkill = null;
+    $("#teSkillBanner").hidden = true;
   }
   // After deleting content the browser keeps the last run's color/size as a "typing style" and wraps
   // new keystrokes in a <span style=…> that has NO data-* attributes — it renders styled but serializes
@@ -2218,17 +2365,19 @@
     document.body.style.overflow = on ? "hidden" : (anyModalOpen() ? "hidden" : "");
   }
   function cancelAiFormat() { if (aiController) aiController.abort(); }
+  const DISPLAYNAME_HEX = "#ed4d00";   // DOS2 DisplayName color (Nephilim orange); chips copy ready-to-paste markup
   function renderNameSuggestions(names) {
     const wrap = $("#teNames"), host = $("#teNameChips");
     host.innerHTML = "";
     const list = (names || []).filter((n) => n && n.trim());
     if (!list.length) { wrap.hidden = true; return; }
     for (const name of list) {
-      const chip = el("button", { className: "te-name-chip", type: "button", title: `Copy "${name}"` },
-        el("span", { textContent: name }),
+      const markup = `<font color='${DISPLAYNAME_HEX}'>${escapeText(name)}</font>`;   // ready for the DisplayName column
+      const chip = el("button", { className: "te-name-chip", type: "button", title: `Copy colored DisplayName for "${name}"` },
+        el("span", { className: "chip-name", textContent: name }),
         el("span", { className: "chip-copy" }, icon("copy", 15)),
       );
-      chip.addEventListener("click", () => copyText(name, `Copied "${name}"`));
+      chip.addEventListener("click", () => copyText(markup, `Copied DisplayName "${name}"`));
       host.append(chip);
     }
     wrap.hidden = false;
@@ -2237,13 +2386,13 @@
     if (aiRunning) return;
     const p = curTextPreset();
     const text = currentPlainText().trim();
-    if (!text) { toast("Type a description in the editor first.", true); return; }
+    if (!text && !loadedSkill) { toast("Type a description or paste a skill row first.", true); return; }
     aiRunning = true;
     aiController = new AbortController();
-    $("#aiOverlaySub").textContent = p ? `Using the "${p.name}" examples` : "";
+    $("#aiOverlaySub").textContent = loadedSkill ? `Using skill "${loadedSkill.name}"` : (p ? `Using the "${p.name}" examples` : "");
     showAiOverlay(true);
     try {
-      const res = await api("POST", "/api/text/format", { text, presetId: currentPresetId }, aiController.signal);
+      const res = await api("POST", "/api/text/format", { text, presetId: currentPresetId, skill: loadedSkill }, aiController.signal);
       setEditorFromDOS2(res.result || "");
       renderNameSuggestions(res.names);
       if (sourceMode) {                    // show the colored result rather than raw tags
@@ -2290,6 +2439,7 @@
       copyText(s, "Tags copied to clipboard.");
     });
     $("#teAiBtn").addEventListener("click", runAiFormat);
+    $("#tsbClear").addEventListener("click", clearSkillContext);
     $("#aiCancelBtn").addEventListener("click", cancelAiFormat);
     $("#teSize").addEventListener("change", () => {
       const v = $("#teSize").value;

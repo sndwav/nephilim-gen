@@ -49,7 +49,7 @@ Top-of-file: path constants, `TEXT_MODEL` (`gemini-2.5-flash`), `SEED` / `TEXT_S
 | Frames (global overlays) | `POST /api/frames` (PNG only), `DELETE /api/frames/:id` |
 | Export | `POST /api/export` (saves a client-composed PNG to `data/exports/`) |
 | Text store | `GET/PUT /api/text` (whole-store replace) |
-| AI formatter | `POST /api/text/format` `{text, presetId}` → `{result, names[]}` |
+| AI formatter | `POST /api/text/format` `{text, presetId, skill?}` → `{result, names[]}` |
 
 Key mechanics:
 
@@ -74,7 +74,8 @@ One script block, comment-sectioned in this order: constants → tiny helpers (`
   - Round-tripping tags ↔ visual is **normalizing, not identity-preserving**: nested `<font>` flattens, only strict 6-digit `#rrggbb` colors survive, sizes outside 1–200 are **dropped** (not clamped — the run inherits the enclosing size or none), and runs of tab/CR/LF collapse to a single space (consecutive spaces survive; only `<br>` persists as a line break). Toggling views can rewrite hand-authored source.
   - Any programmatic content change must call `markDirty()` and clear/recompute `savedOffsets`.
   - The working document is saved **only to localStorage** (`teScratch`, debounced) — never server-side. Only palette/presets/examples go through `PUT /api/text`.
-- **AI format** sends plain text (tags stripped) — existing coloring is discarded and the response wholesale replaces the editor content, with up to 5 name suggestions rendered as copy chips.
+- **AI format** sends plain text (tags stripped) — existing coloring is discarded and the response wholesale replaces the editor content, with up to 5 name suggestions rendered as copy chips (each chip copies a ready-to-use colored DisplayName, `<font color='#ed4d00'>Name</font>`, not plain text).
+- **Skill-row paste (DOS2 tooltip variables)**: pasting a tab-separated skill row (header line + value line) copied from the skills DB is auto-detected in `onEditorPaste` by `tryParseSkillRow` (three gates: ≥2 tabbed lines, ≥8 columns, and sentinel columns `StatsDescriptionParams` / `StatsDescription`+`DisplayName` — so ordinary prose is never swallowed). The parsed skill is held in the transient module var `loadedSkill` (memory only — never persisted, never entered into the editor DOM, lost on reload) and shown in a banner (`#teSkillBanner`) with a Clear button. `buildSkillContext` turns `StatsDescriptionParams` (semicolon-separated, 1-indexed) into a numbered/labeled/classified list: each variable is `USE` or `SKIP` (skip = a range/radius stat, or an index already consumed by `StatsDescription`, e.g. `Range: [1]`). When a skill is loaded, `runAiFormat` sends it as the `skill` field and the empty-text guard is relaxed (both client `runAiFormat` **and** server `POST /api/text/format` guards must allow empty `text` when `skill` is present). The AI weaves the literal `[N]` tokens into the Description; brackets survive the serializer untouched (`escapeText` only touches `& < >`).
 - **Modals**: `hidden` attribute on `.modal-backdrop`. Escape handling is one centralized keydown listener with a **hard-coded priority chain — every new modal must be added there manually**. Backdrop-click-to-close is deliberately NOT implemented (a text-drag ending on the backdrop would fire a click). Toolbar buttons that must not steal the editor selection call `preventDefault()` on mousedown.
 - **Keyboard**: Ctrl/Cmd+Enter dispatches by which tab panel is visible (generate vs. AI format); Enter submits single-input modals.
 - **Naming**: text-tab globals are deliberately prefixed/namespaced (`curTextPreset`, `renderTextPresets`, `currentPresetId`, `te*`) to avoid colliding with image-tab twins (`currentPreset`, `renderPresetSelect`, `selectedPresetId`). Follow this when adding code to either tab.
@@ -90,6 +91,7 @@ These are duplicated or asymmetrically enforced between `server.js` and `public/
 4. **Frames must be PNG** — enforced client-side (`handleFrameUpload`); the server-side check in `POST /api/frames` is best-effort only (it's skipped entirely when `mimeType` is omitted), so don't rely on the server to reject non-PNGs.
 5. **`PUT /api/presets/:id` deliberately discards client-sent `referenceImages`** and re-attaches the server's copies keyed by sub-preset id. References are only mutable via `/api/references`. Don't "simplify" this merge; also note the PUT spreads unknown sub fields (that's how `frameLayers` survives) — a rebuild that doesn't spread would drop them.
 6. **Frames metadata lives inside `presets.json`** (top-level `frames` array) even though frames are global — anything rewriting that file wholesale must preserve the key.
+7. **Skill-format is split across both files**: the client parses/classifies the skill row (`tryParseSkillRow`/`buildSkillContext` in `index.html`) and computes each variable's USE/SKIP flag; the server only *renders* that structured object into the prompt (`buildSkillBlock`/`buildFormatUserPrompt` in `server.js`) and adds the `PLACEHOLDER VARIABLES` rules to `buildFormatSystemPrompt`. The classification logic lives only on the client — the server trusts the flags. The DisplayName color `#ed4d00` is hardcoded in three client spots (name-chip markup wrap, the `.chip-name` CSS, and the palette Nephilim seed) and deliberately **not** produced by the model.
 
 ## Other traps
 

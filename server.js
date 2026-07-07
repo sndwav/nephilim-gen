@@ -352,6 +352,13 @@ function buildFormatSystemPrompt(palette) {
     "",
     'For example, given "a lightning bolt that deals air damage and has a chance to stun the enemy" with the Nephilim ability style, a good result reads like: "Use the power of the Nephilim to unleash a striking lightning bolt that inflicts Air Damage upon impact and potentially Stuns the enemy." — then colored per the palette.',
     "",
+    "PLACEHOLDER VARIABLES (only when a 'SKILL MECHANICS' block is present in the user message):",
+    "- That block may list numbered variables as literal bracket tokens: [1], [2], [3] … Each token is a placeholder the GAME fills in at runtime with a number you do NOT know.",
+    "- When your prose describes a variable's effect (its damage, healing, damage-over-time or duration), write that variable's bracket token VERBATIM — copy the digits exactly, e.g. \"for [2] damage\" or \"restoring [3] Vitality\". Brackets are plain text and may sit inside a colored <font> run.",
+    "- NEVER compute, guess, round, or invent a number, and NEVER replace a token with a numeral. If you do not know a value, you STILL write only its [N] token.",
+    "- Use exactly the [N] shown for each variable. Do NOT renumber, reorder, merge, or invent tokens that were not listed.",
+    "- Weave in every variable marked USE exactly once, where its effect is described. SKIP every variable marked SKIP — do not mention its token at all.",
+    "",
     "NAME SUGGESTIONS:",
     "- Also suggest exactly 5 short, evocative names for this ability/status/effect, fitting a dark-fantasy tone.",
     "- Take cues from the naming style and conventions of the example titles provided (length, tone, structure), but also be creative and varied — do not merely mimic or reuse them.",
@@ -360,7 +367,39 @@ function buildFormatSystemPrompt(palette) {
     'Return a JSON object: { "description": the formatted <font> string, "names": an array of exactly 5 name strings }.',
   ].join("\n");
 }
-function buildFormatUserPrompt(text, instructions, examples) {
+// Render the client-parsed skill (mechanical columns + numbered/classified variables) into a prompt
+// block. The client already decided USE/SKIP per variable, so the block and the editor banner agree.
+function buildSkillBlock(skill) {
+  const c = skill.columns || {};
+  const row = (k, lbl) => (c[k] ? `- ${lbl}: ${c[k]}` : "");
+  const L = ["SKILL MECHANICS — ground the Description in these facts (a DOS2 skill pasted from the mod's skills database)."];
+  const mech = [
+    row("DisplayName", "Current name (may be empty)"), row("Ability", "School"), row("SkillType", "Skill type"),
+    row("Damage", "Damage"), row("DamageType", "Damage type"), row("DamageMultiplier", "Damage multiplier"),
+    row("Cooldown", "Cooldown (turns)"), row("ActionPoints", "AP cost"),
+    row("Range", "Range"), row("TargetRadius", "Target radius"), row("AreaRadius", "Area radius"),
+    row("Duration", "Duration"), row("SurfaceType", "Surface"), row("Requirement", "Requirement"), row("Tier", "Tier"),
+  ].filter(Boolean);
+  if (mech.length) L.push("", "Stats:", ...mech);
+  if (skill.statsDescription)
+    L.push("", `Stats line already shown to the player (do NOT repeat its numbers in the prose): "${skill.statsDescription}"`);
+  const params = skill.params || [];
+  if (params.length) {
+    L.push("", "Numbered tooltip variables (from StatsDescriptionParams, 1-indexed — these are the literal [N] placeholders):");
+    for (const p of params) {
+      const why = p.consumedByStats ? " (already shown in the stats line above)"
+                : p.rangeLike ? " (range/radius stat — belongs in the stats line, not the prose)" : "";
+      L.push(p.use
+        ? `  [${p.index}] ${p.label} — USE: weave the token [${p.index}] into the prose where this effect is described.`
+        : `  [${p.index}] ${p.label} — SKIP: do not mention [${p.index}]${why}.`);
+    }
+    L.push("", "Write [N] tokens exactly as shown; never substitute a number. Do not introduce tokens that are not listed above.");
+  } else {
+    L.push("", "This skill has no numbered variables — write the Description from the stats above with no bracket tokens.");
+  }
+  return L.join("\n");
+}
+function buildFormatUserPrompt(text, instructions, examples, skill) {
   const shots = (examples || []).filter((e) => e && e.text);
   let prompt = "";
   if (shots.length) {
@@ -372,9 +411,19 @@ function buildFormatUserPrompt(text, instructions, examples) {
     }).join("\n\n");
     prompt += "\n\n---\n\n";
   }
-  prompt += "Rewrite the following rough description into a new description in that same style, and suggest 5 fitting names. Rephrase freely to match the examples; keep the mechanics (damage types, effects, numbers, targets) accurate.";
-  if (instructions && instructions.trim()) prompt += ` Additional instructions: ${instructions.trim()}`;
-  prompt += `\n\nRough description:\n${String(text).trim()}`;
+  if (skill) {
+    prompt += buildSkillBlock(skill) + "\n\n---\n\n";
+    prompt += "Write this ability's Description in the target style, then suggest 5 fitting names. Weave in the USE tokens exactly as instructed and keep every mechanic accurate.";
+    if (instructions && instructions.trim()) prompt += ` Additional instructions: ${instructions.trim()}`;
+    if (skill.description && skill.description.trim())
+      prompt += `\n\nExisting Description to polish (rewrite in-style; keep its [N] tokens):\n${skill.description.trim()}`;
+    const notes = String(text || "").trim();
+    prompt += notes ? `\n\nAdditional notes from the user:\n${notes}` : "\n\n(No extra notes — rely on the mechanics above.)";
+  } else {
+    prompt += "Rewrite the following rough description into a new description in that same style, and suggest 5 fitting names. Rephrase freely to match the examples; keep the mechanics (damage types, effects, numbers, targets) accurate.";
+    if (instructions && instructions.trim()) prompt += ` Additional instructions: ${instructions.trim()}`;
+    prompt += `\n\nRough description:\n${String(text).trim()}`;
+  }
   return prompt;
 }
 app.post("/api/text/format", async (req, res) => {
@@ -382,18 +431,18 @@ app.post("/api/text/format", async (req, res) => {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not set. Add it to .env and restart the server." });
     }
-    const { text, instructions, presetId } = req.body || {};
-    if (!text || !text.trim()) return res.status(400).json({ error: "Text is required." });
+    const { text, instructions, presetId, skill } = req.body || {};
+    if ((!text || !text.trim()) && !skill) return res.status(400).json({ error: "Provide text or a skill to format." });
 
     const store = await readTextStore();
     const preset = (store.presets || []).find((p) => p.id === presetId) || store.presets[0] || null;
     const examples = preset ? preset.examples : [];
     const response = await getAI().models.generateContent({
       model: TEXT_MODEL,
-      contents: [{ parts: [{ text: buildFormatUserPrompt(text, instructions, examples) }] }],
+      contents: [{ parts: [{ text: buildFormatUserPrompt(text, instructions, examples, skill) }] }],
       config: {
         systemInstruction: buildFormatSystemPrompt(store.palette),
-        temperature: 0.7,
+        temperature: skill ? 0.35 : 0.7,   // lower temp when tooltip tokens must be reproduced verbatim
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
@@ -421,6 +470,11 @@ app.post("/api/text/format", async (req, res) => {
       description = stripCodeFences(raw);          // fallback: treat the whole response as the description
     }
     if (!description) return res.status(502).json({ error: "The model returned no text. Try again or adjust the input." });
+    if (skill && Array.isArray(skill.params)) {    // non-fatal signal: model dropped expected tooltip tokens
+      const wanted = skill.params.filter((p) => p.use).map((p) => `[${p.index}]`);
+      if (wanted.length && !wanted.some((tok) => description.includes(tok)))
+        console.warn(`[text/format] skill "${skill.name || "?"}" expected ${wanted.join(",")} but the result contains none.`);
+    }
     res.json({ result: description, names });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Formatting failed." });
