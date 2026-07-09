@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A local, single-user web app for making assets for the **Souls of the Nephilim** mod (Divinity: Original Sin 2), powered by Google Gemini. Two tabs: an **Image Generator** (prompt templates + reference images → game art) and a **Text Editor** (WYSIWYG for DOS2 `<font color size>` markup with an AI formatter). Local-only use is a **convention, not a code guarantee** — `app.listen(PORT)` binds all interfaces and there is no auth or input validation, so nothing here should ever be exposed to a network.
+A local, single-user web app for making assets for the **Souls of the Nephilim** mod (Divinity: Original Sin 2), powered by Google Gemini. Three tabs: an **Icon Generator** (preset-driven: prompt templates + reference images → game art), an **Image Generator** (preset-less / "classic": a free-text prompt + optional inline reference images → one image), and a **Text Editor** (WYSIWYG for DOS2 `<font color size>` markup with an AI formatter). Local-only use is a **convention, not a code guarantee** — `app.listen(PORT)` binds all interfaces and there is no auth or input validation, so nothing here should ever be exposed to a network.
 
 ## Commands
 
@@ -24,7 +24,7 @@ npm start          # runs node server.js → http://localhost:5173
 The entire app is **two source files**:
 
 - **`server.js`** (~440 lines) — Express server, ESM (`type: module`, top-level `await` before `listen`). All API routes, Gemini calls (via `@google/genai`), and disk persistence.
-- **`public/index.html`** (~2400 lines) — the entire frontend: one `<style>` block, the HTML (two tab panels + all modals), one `<script>` block of vanilla JS. No framework, no build, no external assets (Lucide icons are inlined SVG paths in the `ICONS` map).
+- **`public/index.html`** (~2400 lines) — the entire frontend: one `<style>` block, the HTML (three tab panels + all modals), one `<script>` block of vanilla JS. No framework, no build, no external assets (Lucide icons are inlined SVG paths in the `ICONS` map).
 
 The server exists because the browser can't call Gemini directly (CORS + key secrecy). All user data lives under `data/` (git-ignored, created/seeded on first run):
 
@@ -46,6 +46,7 @@ Top-of-file: path constants, `TEXT_MODEL` (`gemini-2.5-flash`), `SEED` / `TEXT_S
 | Image presets CRUD | `GET/POST /api/presets`, `PUT/DELETE /api/presets/:id` |
 | Reference images | `POST /api/references`, `DELETE /api/references/:subPresetId/:refId` |
 | Generation | `POST /api/generate` `{subPresetId, subject}` → `{imageDataUrl, promptUsed, model, savedAs}` |
+| Freeform generation | `POST /api/generate-classic` `{prompt, model, aspectRatio, resolution, references[]}` → same shape as `/api/generate` (no preset; prompt verbatim, inline refs, no disk) |
 | Frames (global overlays) | `POST /api/frames` (PNG only), `DELETE /api/frames/:id` |
 | Export | `POST /api/export` (saves a client-composed PNG to `data/exports/`) |
 | Text store | `GET/PUT /api/text` (whole-store replace) |
@@ -77,9 +78,10 @@ One script block, comment-sectioned in this order: constants → tiny helpers (`
 - **AI format** sends plain text (tags stripped) — existing coloring is discarded and the response wholesale replaces the editor content, with up to 5 name suggestions rendered as copy chips (each chip copies a ready-to-use colored DisplayName, `<font color='#ed4d00'>Name</font>`, not plain text).
 - **Skill-row paste (DOS2 tooltip variables)**: pasting a tab-separated skill row (header line + value line) copied from the skills DB is auto-detected in `onEditorPaste` by `tryParseSkillRow` (three gates: ≥2 tabbed lines, ≥8 columns, and sentinel columns `StatsDescriptionParams` / `StatsDescription`+`DisplayName` — so ordinary prose is never swallowed). The parsed skill is held in the transient module var `loadedSkill` (memory only — never persisted, never entered into the editor DOM, lost on reload) and shown in a banner (`#teSkillBanner`) with a Clear button. `buildSkillContext` turns `StatsDescriptionParams` (semicolon-separated, 1-indexed) into a numbered/labeled/classified list: each variable is `USE` or `SKIP` (skip = a range/radius stat, or an index already consumed by `StatsDescription`, e.g. `Range: [1]`). When a skill is loaded, `runAiFormat` sends it as the `skill` field and the empty-text guard is relaxed (both client `runAiFormat` **and** server `POST /api/text/format` guards must allow empty `text` when `skill` is present). The AI weaves the literal `[N]` tokens into the Description; brackets survive the serializer untouched (`escapeText` only touches `& < >`).
 - **Modals**: `hidden` attribute on `.modal-backdrop`. Escape handling is one centralized keydown listener with a **hard-coded priority chain — every new modal must be added there manually**. Backdrop-click-to-close is deliberately NOT implemented (a text-drag ending on the backdrop would fire a click). Toolbar buttons that must not steal the editor selection call `preventDefault()` on mousedown.
-- **Keyboard**: Ctrl/Cmd+Enter dispatches by which tab panel is visible (generate vs. AI format); Enter submits single-input modals.
-- **Naming**: text-tab globals are deliberately prefixed/namespaced (`curTextPreset`, `renderTextPresets`, `currentPresetId`, `te*`) to avoid colliding with image-tab twins (`currentPreset`, `renderPresetSelect`, `selectedPresetId`). Follow this when adding code to either tab.
-- **User feedback**: `toast()` for transient messages (single global element, overwrite-only); the timestamped activity log (`logMsg`) is an image-tab facility for generation/export events.
+- **Keyboard**: Ctrl/Cmd+Enter dispatches by which tab panel is visible (icon generate / classic generate / AI format); Enter submits single-input modals.
+- **Naming**: per-tab globals are deliberately prefixed/namespaced to avoid colliding across tabs — the Text Editor uses `te*` (`curTextPreset`, `renderTextPresets`, `currentPresetId`) and the classic Image Generator uses `cg*` (`cgState`, `cgLastResult`, `doGenerateClassic`, `#cg*` ids), both kept distinct from the icon tab's twins (`currentPreset`, `renderPresetSelect`, `selectedPresetId`). Follow this when adding code to any tab.
+- **User feedback**: `toast()` for transient messages (single global element, overwrite-only); the timestamped activity log (`logMsg`) is an icon-tab facility for generation/export events (the classic tab has its own `cgLogMsg` twin).
+- **Classic Image Generator tab** (`#panel-classic`, `cg*` namespace): the preset-less sibling of the icon tab — a free-text `#cgPrompt`, three settings dropdowns (reusing `MODELS`/`ASPECTS`/`RESOLUTIONS` via `selectFrom`/`field`), and an in-memory reference manager (`cgState.references` holds base64; thumbnails render from data URLs — **not** stored on disk or via `/api/references`). `doGenerateClassic` POSTs `/api/generate-classic` with the prompt + settings + inline refs. Preview/log/result-button helpers are `cg*` twins of the icon-tab ones (their own `#cg*` ids), so the icon tab is untouched. Prompt + settings persist to `localStorage["cgScratch"]`; reference base64 does **not** (quota). Eagerly initialized (`initClassic`, no lazy guard, since it fetches nothing). No "Prepare for export" — crop/frames are icon-only.
 
 ## Cross-file sync points (edit one → check the other)
 
@@ -87,7 +89,7 @@ These are duplicated or asymmetrically enforced between `server.js` and `public/
 
 1. **`injectSubject()`** is duplicated verbatim (server does real prompt building; the client copy powers the live preview). Change both or the preview lies.
 2. **Model/aspect/resolution lists exist only in the client** (`MODEL_NAMES`, `MODELS`, `ASPECTS`, `RESOLUTIONS` near the top of the script). The server passes `sub.model/aspectRatio/resolution` to Gemini unvalidated — the client dropdowns are the only gate, so entries must be valid Gemini values. Adding/renaming a model also means updating the default in `SEED` (server) and `makeNewSub()` (client), plus the README model table.
-3. **New-sub-preset defaults** in `makeNewSub()` mirror the server `SEED` sub-preset (model / 1:1 / 1K / 64×64 export).
+3. **New-sub-preset defaults** in `makeNewSub()` mirror the server `SEED` sub-preset (model / 1:1 / 1K / 64×64 export). The classic tab's `cgState` defaults (client) and the `/api/generate-classic` fallback defaults (server) share the same model / 1:1 / 1K values — keep all four in sync if the default image model changes.
 4. **Frames must be PNG** — enforced client-side (`handleFrameUpload`); the server-side check in `POST /api/frames` is best-effort only (it's skipped entirely when `mimeType` is omitted), so don't rely on the server to reject non-PNGs.
 5. **`PUT /api/presets/:id` deliberately discards client-sent `referenceImages`** and re-attaches the server's copies keyed by sub-preset id. References are only mutable via `/api/references`. Don't "simplify" this merge; also note the PUT spreads unknown sub fields (that's how `frameLayers` survives) — a rebuild that doesn't spread would drop them.
 6. **Frames metadata lives inside `presets.json`** (top-level `frames` array) even though frames are global — anything rewriting that file wholesale must preserve the key.

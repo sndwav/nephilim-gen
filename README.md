@@ -1,10 +1,12 @@
 # Nephilim Gen — Game Asset Toolkit
 
 A small, local web app for making assets for the **Souls of the Nephilim** mod, powered by Google's
-Gemini models. It has two tabs:
+Gemini models. It has three tabs:
 
-- **Image Generator** — combine a reusable **prompt template** with a short **subject** you type, plus a
-  set of **reference images** for style, and get generated game art (icons, portraits, backgrounds, and more).
+- **Icon Generator** — combine a reusable **prompt template** with a short **subject** you type, plus a
+  set of **reference images** for style, and get generated game art (icon sheets and more), organized by preset.
+- **Image Generator** — a simpler, preset-less generator: type a full **prompt**, choose the model / aspect
+  ratio / resolution, optionally attach **reference images**, and generate a single image.
 - **Text Editor** — a WYSIWYG editor for the mod's in-game text markup (Divinity: Original Sin 2
   `<font color size>` tags): recolor and resize selected text, manage a color palette, view and copy the
   raw tags, and let the AI **rephrase, color, and name** a rough description to match your examples.
@@ -24,7 +26,7 @@ Pick a preset (e.g. "Icon")
 
 ## Features
 
-### Image Generator
+### Icon Generator
 
 - **Presets & sub-presets** — organize prompt templates by category and asset type.
 - **Live prompt preview** — see exactly what will be sent as you type (`{{subject}}` is replaced in place).
@@ -34,6 +36,15 @@ Pick a preset (e.g. "Icon")
 - **Download + auto-save** — every generation is saved to `data/outputs/` automatically.
 - **Activity log** — a scrollable log of what was generated and where it was saved.
 - Keyboard shortcut: **Ctrl+Enter** to generate.
+
+### Image Generator
+
+- **Preset-less** — no templates or presets; just type a full prompt and generate.
+- **Settings** — choose the model, aspect ratio, and resolution per generation.
+- **Reference images** — optionally attach images to steer style/content; they're sent inline with the prompt (kept in memory for the session).
+- **Download + auto-save** — every generation is saved to `data/outputs/` automatically.
+- **Copy prompt** and an **activity log**, plus **Ctrl+Enter** to generate.
+- Prompt and settings are remembered across reloads (reference images are not).
 
 ### Text Editor
 
@@ -141,7 +152,7 @@ Open **<http://localhost:5173>** in your browser.
 
 ## Using the app
 
-### Image Generator
+### Icon Generator
 
 1. Pick a **preset** and **sub-preset** from the dropdowns on the left (a seeded **Icon → Ability Icon**
    example is included on first run).
@@ -164,6 +175,17 @@ If a template has no `{{subject}}`, the subject is appended at the end (the edit
 | `gemini-3.1-flash-image` | Nano Banana 2 | **Default.** Fast, up to 14 reference images, 512/1K/2K/4K. |
 | `gemini-3-pro-image` | Nano Banana Pro | Highest quality & best text rendering; slower/pricier. |
 | `gemini-2.5-flash-image` | Nano Banana (legacy) | Cheaper fallback, 1K only. |
+
+### Image Generator
+
+A simpler generator with no presets:
+
+1. Type a **prompt** describing the image you want.
+2. Set the **model**, **aspect ratio**, and **resolution** (same options as the model table above).
+3. Optionally add **reference images** (click **Add**) — they're sent inline with the prompt to steer the result, and stay only for the current session.
+4. Click **Generate** (or **Ctrl+Enter**). The image appears on the right and is auto-saved to `data/outputs/`; use **Download** or **Copy prompt** as needed.
+
+Your prompt and settings are saved in the browser and restored on reload; reference images reset.
 
 ### Text Editor
 

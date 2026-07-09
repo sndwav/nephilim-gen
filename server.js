@@ -258,6 +258,60 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
+// ---------- freeform / "classic" generation (no preset; inline references, no disk) ----------
+// body: { prompt, model, aspectRatio, resolution, references:[{ name, mimeType, dataBase64 }] }
+// This is /api/generate minus the preset/disk lookups: the prompt is used verbatim (no injectSubject)
+// and reference images arrive inline in the body instead of being read from data/references/<subId>/.
+app.post("/api/generate-classic", async (req, res) => {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not set. Add it to .env and restart the server." });
+    }
+    const { prompt, references } = req.body || {};
+    if (!prompt || !prompt.trim()) return res.status(400).json({ error: "Prompt is required." });
+
+    // No preset to constrain these — take them from the body, defaulting to the makeNewSub()/SEED values.
+    // Not validated against an allow-list on purpose: those lists live only in the client (see CLAUDE.md).
+    const model = req.body.model || "gemini-3.1-flash-image";
+    const aspectRatio = req.body.aspectRatio || "1:1";
+    const resolution = req.body.resolution || "1K";
+
+    const parts = [{ text: prompt }];
+    for (const ref of references || []) {
+      if (ref?.dataBase64) parts.push({ inlineData: { mimeType: ref.mimeType || "image/png", data: ref.dataBase64 } });
+    }
+
+    const response = await getAI().models.generateContent({
+      model,
+      contents: [{ parts }],
+      config: {
+        responseModalities: ["IMAGE", "TEXT"],
+        imageConfig: { aspectRatio, imageSize: resolution },
+      },
+    });
+
+    // Response parsing mirrors /api/generate (the source of truth): skip thought images, take the last one;
+    // if none, the model's text parts (unfiltered) become the 502 message.
+    const outParts = response?.candidates?.[0]?.content?.parts ?? [];
+    const imgPart = outParts.filter((p) => p.inlineData && !p.thought).pop();
+    if (!imgPart?.inlineData?.data) {
+      const text = outParts.filter((p) => p.text).map((p) => p.text).join(" ").trim();
+      return res.status(502).json({ error: text || "The model returned no image. Adjust the prompt or references." });
+    }
+    const mime = imgPart.inlineData.mimeType || "image/png";
+    const b64 = imgPart.inlineData.data;
+
+    // auto-save a copy — filename slug is derived from the prompt (there is no sub-preset name here)
+    const slug = prompt.trim().slice(0, 40).replace(/\W+/g, "_").replace(/^_+|_+$/g, "") || "image";
+    const outName = `${Date.now()}-${slug}.${mime.split("/")[1] || "png"}`;
+    await fs.writeFile(path.join(OUTPUTS_DIR, outName), Buffer.from(b64, "base64"));
+
+    res.json({ imageDataUrl: `data:${mime};base64,${b64}`, promptUsed: prompt, model, savedAs: outName });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Image generation failed." });
+  }
+});
+
 // ---------- frames (global overlay PNGs) ----------
 // body: { name, mimeType, dataBase64 }  — PNG only (transparency required)
 app.post("/api/frames", async (req, res) => {

@@ -573,7 +573,8 @@
       <h1>The Souls of The Nephilim</h1>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab active" id="tab-image" data-tab="image" role="tab" aria-selected="true">Image Generator</button>
+      <button class="tab active" id="tab-image" data-tab="image" role="tab" aria-selected="true">Icon Generator</button>
+      <button class="tab" id="tab-classic" data-tab="classic" role="tab" aria-selected="false">Image Generator</button>
       <button class="tab" id="tab-text" data-tab="text" role="tab" aria-selected="false">Text Editor</button>
     </nav>
   </header>
@@ -639,6 +640,46 @@
           <button class="icon-btn log-clear" id="logClear" title="Clear log">Clear</button>
         </div>
         <div class="log-body" id="logBody" aria-live="polite"></div>
+      </div>
+    </section>
+  </div>
+  </section>
+
+  <section class="tab-panel" id="panel-classic" role="tabpanel" aria-labelledby="tab-classic" hidden>
+  <div class="app">
+    <!-- ============ LEFT: CONTROLS ============ -->
+    <section class="pane left">
+      <label class="field">
+        <span>Prompt</span>
+        <textarea id="cgPrompt" rows="8" placeholder="Describe the image to generate…"></textarea>
+      </label>
+
+      <div class="field">
+        <span>Settings</span>
+        <div class="grid3" id="cgSettings"></div>
+      </div>
+
+      <div id="cgRefs"></div>
+
+      <button class="btn primary generate" id="cgGenerateBtn" disabled>Generate</button>
+      <p class="hint">Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to generate</p>
+    </section>
+
+    <!-- ============ RIGHT: PREVIEW ============ -->
+    <section class="pane right">
+      <div class="preview" id="cgPreview"></div>
+      <div class="preview-bar">
+        <div class="model-badge" id="cgModelBadge"></div>
+        <div class="spacer"></div>
+        <a class="btn ghost disabled" id="cgDownloadBtn" download>Download</a>
+        <button class="btn ghost" id="cgCopyPromptBtn" disabled>Copy prompt</button>
+      </div>
+      <div class="log">
+        <div class="log-head">
+          <span>Log</span>
+          <button class="icon-btn log-clear" id="cgLogClear" title="Clear log">Clear</button>
+        </div>
+        <div class="log-body" id="cgLogBody" aria-live="polite"></div>
       </div>
     </section>
   </div>
@@ -1722,6 +1763,199 @@
       .catch((e) => { $("#exportStatus").textContent = "Downloaded; disk save failed."; toast(e.message, true); logMsg("Export save failed: " + e.message, "error"); });
   }
 
+  // ================= CLASSIC IMAGE TAB (preset-less generator) =================
+  // A simpler sibling of the Icon Generator: a free-text prompt + settings + optional inline reference
+  // images, generated via POST /api/generate-classic. No presets, no server-side reference storage.
+  // Namespaced with a cg* prefix (like the te* text-tab twins) so nothing collides with icon-tab code.
+  let cgState = { model: "gemini-3.1-flash-image", aspectRatio: "1:1", resolution: "1K", references: [] };
+  // references: [{ id, name, mimeType, dataBase64 }] — base64 held in memory only (never persisted).
+  let cgLastResult = null;
+  let cgIsGenerating = false;
+  const CG_STORE = "cgScratch";
+
+  // ---------------- preview states (cg* twins of the icon-tab helpers) ----------------
+  function cgShowEmpty() {
+    const p = $("#cgPreview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", {},
+        el("div", { className: "empty-ill" }, icon("image", 46)),
+        el("div", { className: "empty-title", textContent: "Your image will appear here" }),
+        el("div", { className: "empty-text", textContent: "Type a prompt and hit Generate." }),
+      ),
+    );
+  }
+  function cgShowLoading() {
+    const p = $("#cgPreview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", {},
+        el("div", { className: "spinner" }),
+        el("div", { className: "loading-text", textContent: "Generating…" }),
+        el("div", { className: "loading-sub", textContent: "This can take 30–60s for large sizes or Nano Banana Pro." }),
+      ),
+    );
+  }
+  function cgShowError(msg) {
+    const p = $("#cgPreview"); p.className = "preview"; p.innerHTML = "";
+    p.append(
+      el("div", { className: "error-box" },
+        el("div", { className: "error-title" }, icon("triangle-alert", 18), el("span", { textContent: "Generation failed" })),
+        el("div", { className: "error-msg", textContent: msg }),
+      ),
+    );
+  }
+  function cgShowImage(data) {
+    const p = $("#cgPreview"); p.className = "preview has-image"; p.innerHTML = "";
+    p.append(el("img", { src: data.imageDataUrl, alt: "Generated image" }));
+  }
+  function cgSetResultButtons(enabled) {
+    const dl = $("#cgDownloadBtn"), cp = $("#cgCopyPromptBtn");
+    dl.classList.toggle("disabled", !enabled);
+    cp.disabled = !enabled;
+    if (!enabled) dl.removeAttribute("href");
+  }
+
+  // ---------------- message log (cg* twins) ----------------
+  function cgLogMsg(text, kind = "") {
+    const body = $("#cgLogBody");
+    const empty = body.querySelector(".log-empty");
+    if (empty) empty.remove();
+    body.append(el("div", { className: "log-line " + kind },
+      el("span", { className: "log-time", textContent: new Date().toLocaleTimeString() }),
+      el("span", { textContent: text }),
+    ));
+    body.scrollTop = body.scrollHeight;
+  }
+  function cgClearLog() {
+    const body = $("#cgLogBody");
+    body.innerHTML = "";
+    body.append(el("div", { className: "log-empty", textContent: "No messages yet." }));
+  }
+
+  // ---------------- settings + references ----------------
+  function renderClassicSettings() {
+    const host = $("#cgSettings"); host.innerHTML = "";
+    const modelSel = selectFrom(MODELS, cgState.model);
+    modelSel.addEventListener("change", () => { cgState.model = modelSel.value; cgUpdateModelBadge(); cgPersist(); });
+    const aspSel = selectFrom(ASPECTS.map((a) => [a, a]), cgState.aspectRatio);
+    aspSel.addEventListener("change", () => { cgState.aspectRatio = aspSel.value; cgPersist(); });
+    const resSel = selectFrom(RESOLUTIONS.map((r) => [r, r]), cgState.resolution);
+    resSel.addEventListener("change", () => { cgState.resolution = resSel.value; cgPersist(); });
+    host.append(field("Model", modelSel), field("Aspect ratio", aspSel), field("Resolution", resSel));
+  }
+  function renderClassicRefs() {
+    const host = $("#cgRefs"); host.innerHTML = "";
+    const box = el("div", { className: "field" });
+    box.append(el("span", { textContent: `Reference images (${cgState.references.length})` }));
+
+    const grid = el("div", { className: "thumbs" });
+    for (const ref of cgState.references) {
+      grid.append(el("div", { className: "thumb" },
+        el("img", { src: `data:${ref.mimeType};base64,${ref.dataBase64}`, alt: ref.name, title: ref.name }),
+        el("button", { className: "thumb-rm", title: "Remove", onclick: () => cgHandleRefDelete(ref.id) }, icon("x", 14)),
+      ));
+    }
+    const fileInput = el("input", { type: "file", accept: "image/*", multiple: true });
+    fileInput.style.display = "none";
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files?.length) cgHandleRefUpload([...fileInput.files]);
+      fileInput.value = "";
+    });
+    grid.append(el("label", { className: "thumb add", title: "Add images" },
+      el("span", { className: "plus" }, icon("plus", 20)),
+      el("span", { className: "add-label", textContent: "Add" }),
+      fileInput,
+    ));
+    box.append(grid);
+    box.append(el("div", { className: "field-hint", textContent: "Optional. Nano Banana 2 uses up to 14 reference images to steer style and content." }));
+    host.append(box);
+  }
+  async function cgHandleRefUpload(files) {
+    try {
+      for (const file of files) {
+        const up = await fileToUpload(file);
+        cgState.references.push({ id: uuid(), ...up });
+      }
+      renderClassicRefs();
+      toast(`Added ${files.length} image${files.length === 1 ? "" : "s"}.`);
+    } catch (e) { toast(e.message, true); }
+  }
+  function cgHandleRefDelete(id) {
+    cgState.references = cgState.references.filter((r) => r.id !== id);
+    renderClassicRefs();
+  }
+
+  // ---------------- badge + generate gating ----------------
+  function cgUpdateModelBadge() {
+    $("#cgModelBadge").textContent = `Model: ${MODEL_NAMES[cgState.model] || cgState.model}`;
+  }
+  function cgUpdateGenerateState() {
+    const hasPrompt = $("#cgPrompt").value.trim().length > 0;
+    $("#cgGenerateBtn").disabled = cgIsGenerating || !hasPrompt;
+    $("#cgGenerateBtn").textContent = cgIsGenerating ? "Generating…" : "Generate";
+  }
+
+  // ---------------- persistence (prompt + settings only; refs stay in memory) ----------------
+  function cgPersist() {
+    try {
+      localStorage.setItem(CG_STORE, JSON.stringify({
+        prompt: $("#cgPrompt").value,
+        model: cgState.model, aspectRatio: cgState.aspectRatio, resolution: cgState.resolution,
+      }));
+    } catch {}
+  }
+  function cgRestore() {
+    try {
+      const s = JSON.parse(localStorage.getItem(CG_STORE) || "null");
+      if (!s) return;
+      if (typeof s.prompt === "string") $("#cgPrompt").value = s.prompt;
+      if (s.model) cgState.model = s.model;
+      if (s.aspectRatio) cgState.aspectRatio = s.aspectRatio;
+      if (s.resolution) cgState.resolution = s.resolution;
+    } catch {}
+  }
+
+  // ---------------- generate ----------------
+  async function doGenerateClassic() {
+    const prompt = $("#cgPrompt").value.trim();
+    if (!prompt || cgIsGenerating) return;
+    cgIsGenerating = true; cgUpdateGenerateState();
+    cgSetResultButtons(false);
+    cgShowLoading();
+    cgLogMsg(`Generating · ${MODEL_NAMES[cgState.model] || cgState.model} · ${cgState.aspectRatio} ${cgState.resolution}…`);
+    try {
+      const references = cgState.references.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }));
+      const data = await api("POST", "/api/generate-classic", {
+        prompt, model: cgState.model, aspectRatio: cgState.aspectRatio, resolution: cgState.resolution, references,
+      });
+      cgLastResult = data;
+      cgShowImage(data);
+      $("#cgDownloadBtn").href = data.imageDataUrl;
+      $("#cgDownloadBtn").download = data.savedAs || "generated.png";
+      $("#cgModelBadge").textContent = `Model: ${MODEL_NAMES[data.model] || data.model}`;
+      cgSetResultButtons(true);
+      if (data.savedAs) cgLogMsg(`Saved to data/outputs/${data.savedAs}`, "success");
+    } catch (e) {
+      cgLastResult = null;
+      cgShowError(e.message || "Image generation failed.");
+      cgSetResultButtons(false);
+      cgLogMsg(`Failed: ${e.message || "Image generation failed."}`, "error");
+    } finally {
+      cgIsGenerating = false; cgUpdateGenerateState();
+    }
+  }
+
+  // ---------------- init (eager; no network fetch, so no lazy guard needed) ----------------
+  function initClassic() {
+    cgRestore();
+    renderClassicSettings();
+    renderClassicRefs();
+    cgShowEmpty();
+    cgClearLog();
+    cgSetResultButtons(false);
+    cgUpdateModelBadge();
+    cgUpdateGenerateState();
+  }
+
   // ================= TEXT EDITOR (DOS2 <font> markup) =================
   // Internal model: a flat run list inside #wysiwyg. A run is a <span data-color data-size>
   // (inline style mirrors the attributes for display only); unstyled body text is a bare text
@@ -2521,6 +2755,13 @@
   $("#downloadBtn").addEventListener("click", (e) => { if (!lastResult) e.preventDefault(); });
   $("#logClear").addEventListener("click", clearLog);
 
+  // Classic image tab (preset-less generator)
+  $("#cgPrompt").addEventListener("input", () => { cgUpdateGenerateState(); cgPersist(); });
+  $("#cgGenerateBtn").addEventListener("click", doGenerateClassic);
+  $("#cgCopyPromptBtn").addEventListener("click", () => { if (cgLastResult) copyText(cgLastResult.promptUsed, "Prompt copied to clipboard."); });
+  $("#cgDownloadBtn").addEventListener("click", (e) => { if (!cgLastResult) e.preventDefault(); });
+  $("#cgLogClear").addEventListener("click", cgClearLog);
+
   // Preset name modal (add / edit)
   $("#presetNameClose").addEventListener("click", closePresetName);
   $("#presetNameCancel").addEventListener("click", closePresetName);
@@ -2544,7 +2785,8 @@
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       if (!$("#panel-text").hidden) runAiFormat();            // text tab: format the current text
-      else if (!$("#panel-image").hidden) doGenerate();       // image tab
+      else if (!$("#panel-image").hidden) doGenerate();       // icon tab
+      else if (!$("#panel-classic").hidden) doGenerateClassic();  // classic image tab
     }
     if (e.key === "Escape") {
       if (!$("#aiOverlay").hidden) cancelAiFormat();
@@ -2569,7 +2811,7 @@
     if (name === "text" && !textEditorReady) { textEditorReady = true; initTextEditor(); }
   }
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => switchTab(t.dataset.tab)));
-  (() => { let saved = null; try { saved = localStorage.getItem("activeTab"); } catch {} switchTab(saved === "text" ? "text" : "image"); })();
+  (() => { let saved = null; try { saved = localStorage.getItem("activeTab"); } catch {} switchTab(["image", "classic", "text"].includes(saved) ? saved : "image"); })();
 
   // ---------------- init ----------------
   document.querySelectorAll("[data-icon]").forEach((elm) => {
@@ -2578,6 +2820,7 @@
   showEmpty();
   clearLog();
   setResultButtons(false);
+  initClassic();
   loadPresets().catch((e) => {
     showError("Could not load presets from the server.\n" + (e.message || ""));
   });
