@@ -615,6 +615,8 @@
         <textarea id="subject" rows="3" placeholder="e.g. three enemy silhouettes in glowing chains"></textarea>
       </label>
 
+      <div id="subjectRefsBox"></div>
+
       <label class="field">
         <span>Prompt preview <em>(read-only)</em></span>
         <pre class="prompt-preview" id="promptPreview">—</pre>
@@ -990,6 +992,12 @@
       ? template.replaceAll("{{subject}}", s)
       : `${template.trim()}\nSubject: ${s}.`;
   }
+  // mirror of the server's subjectForPrompt — subject refs stand in for typed text. Change both.
+  const SUBJECT_REF_STANDIN = "the subject shown in the attached subject reference image(s)";
+  function subjectForPrompt(subject, subjectRefCount) {
+    const s = String(subject || "").trim();
+    return s || (subjectRefCount ? SUBJECT_REF_STANDIN : "");
+  }
   // read a chosen file into base64 for upload
   function fileToUpload(file) {
     return new Promise((resolve, reject) => {
@@ -1031,6 +1039,9 @@
   let selectedSubId = null;
   let isGenerating = false;
   let lastResult = null;
+  // Per-generation SUBJECT references (what to draw), as opposed to the sub-preset's style references
+  // (how to draw it). In memory only — never saved to the preset, to disk, or to localStorage (quota).
+  let subjectRefs = [];
 
   let editorDraft = null;
   let editorSubIndex = 0;
@@ -1098,13 +1109,57 @@
       el("span", { className: "dot", textContent: "•" }),
       el("span", { textContent: `${s.aspectRatio} · ${s.resolution}` }),
       el("span", { className: "dot", textContent: "•" }),
-      el("span", { textContent: `${refCount} reference${refCount === 1 ? "" : "s"}` }),
+      el("span", { textContent: `${refCount} style reference${refCount === 1 ? "" : "s"}` }),
     );
   }
   function updatePromptPreview() {
     const s = currentSub();
-    const subject = $("#subject").value;
-    $("#promptPreview").textContent = !s ? "—" : (subject.trim() ? injectSubject(s.promptTemplate, subject) : s.promptTemplate);
+    const subject = subjectForPrompt($("#subject").value, subjectRefs.length);
+    $("#promptPreview").textContent = !s ? "—" : (subject ? injectSubject(s.promptTemplate, subject) : s.promptTemplate);
+  }
+  // ---------------- subject reference images (per-generation, in memory) ----------------
+  function renderSubjectRefs() {
+    const host = $("#subjectRefsBox"); host.innerHTML = "";
+    const box = el("div", { className: "field" });
+    box.append(el("span", { textContent: `Subject reference images (${subjectRefs.length})` }));
+
+    const grid = el("div", { className: "thumbs" });
+    for (const ref of subjectRefs) {
+      grid.append(el("div", { className: "thumb" },
+        el("img", { src: `data:${ref.mimeType};base64,${ref.dataBase64}`, alt: ref.name, title: ref.name }),
+        el("button", { className: "thumb-rm", title: "Remove", onclick: () => handleSubjectRefDelete(ref.id) }, icon("x", 14)),
+      ));
+    }
+    const fileInput = el("input", { type: "file", accept: "image/*", multiple: true });
+    fileInput.style.display = "none";
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files?.length) handleSubjectRefUpload([...fileInput.files]);
+      fileInput.value = "";
+    });
+    grid.append(el("label", { className: "thumb add", title: "Add images" },
+      el("span", { className: "plus" }, icon("plus", 20)),
+      el("span", { className: "add-label", textContent: "Add" }),
+      fileInput,
+    ));
+    box.append(grid);
+    box.append(el("div", { className: "field-hint", textContent:
+      "Optional. What to draw — the sub-preset's references say how to draw it. The subject here is remade in the preset's style. Not saved: cleared on reload." }));
+    host.append(box);
+  }
+  async function handleSubjectRefUpload(files) {
+    try {
+      for (const file of files) subjectRefs.push({ id: uuid(), ...(await fileToUpload(file)) });
+      renderSubjectRefs();
+      updatePromptPreview();
+      updateGenerateState();
+      toast(`Added ${files.length} subject reference${files.length === 1 ? "" : "s"}.`);
+    } catch (e) { toast(e.message, true); }
+  }
+  function handleSubjectRefDelete(id) {
+    subjectRefs = subjectRefs.filter((r) => r.id !== id);
+    renderSubjectRefs();
+    updatePromptPreview();
+    updateGenerateState();
   }
   function updateModelBadge() {
     const s = currentSub();
@@ -1112,7 +1167,8 @@
   }
   function updateGenerateState() {
     const s = currentSub();
-    const hasSubject = $("#subject").value.trim().length > 0;
+    // a subject reference image can stand in for typed text (see subjectForPrompt)
+    const hasSubject = $("#subject").value.trim().length > 0 || subjectRefs.length > 0;
     $("#generateBtn").disabled = isGenerating || !s || !hasSubject;
     $("#generateBtn").textContent = isGenerating ? "Generating…" : "Generate";
   }
@@ -1180,13 +1236,16 @@
   async function doGenerate() {
     const s = currentSub();
     const subject = $("#subject").value.trim();
-    if (!s || !subject || isGenerating) return;
+    if (!s || (!subject && !subjectRefs.length) || isGenerating) return;
     isGenerating = true; updateGenerateState();
     setResultButtons(false);
     showLoading();
-    logMsg(`Generating "${subject}" · ${MODEL_NAMES[s.model] || s.model} · ${s.aspectRatio} ${s.resolution}…`);
+    const what = subject ? `"${subject}"` : "the subject reference";
+    const refNote = subjectRefs.length ? ` + ${subjectRefs.length} subject ref${subjectRefs.length === 1 ? "" : "s"}` : "";
+    logMsg(`Generating ${what}${refNote} · ${MODEL_NAMES[s.model] || s.model} · ${s.aspectRatio} ${s.resolution}…`);
     try {
-      const data = await api("POST", "/api/generate", { subPresetId: s.id, subject });
+      const subjectReferences = subjectRefs.map(({ name, mimeType, dataBase64 }) => ({ name, mimeType, dataBase64 }));
+      const data = await api("POST", "/api/generate", { subPresetId: s.id, subject, subjectReferences });
       lastResult = data;
       showImage(data);
       $("#downloadBtn").href = data.imageDataUrl;
@@ -1399,7 +1458,7 @@
   function renderRefManager(s) {
     const refs = s.referenceImages || [];
     const box = el("div", { className: "field" });
-    box.append(el("span", { textContent: `Reference images (${refs.length})` }));
+    box.append(el("span", { textContent: `Style reference images (${refs.length})` }));
 
     const grid = el("div", { className: "thumbs" });
     for (const ref of refs) {
@@ -2820,6 +2879,7 @@
   showEmpty();
   clearLog();
   setResultButtons(false);
+  renderSubjectRefs();
   initClassic();
   loadPresets().catch((e) => {
     showError("Could not load presets from the server.\n" + (e.message || ""));

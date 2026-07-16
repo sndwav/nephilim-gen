@@ -121,6 +121,26 @@ function injectSubject(template, subject) {
     ? template.replaceAll("{{subject}}", s)
     : `${template.trim()}\nSubject: ${s}.`;
 }
+// What actually gets injected as {{subject}}. Subject reference images can stand in for typed text:
+// with references but no text, the prompt points the model at the attached images instead.
+// DUPLICATED VERBATIM in public/index.html (the live prompt preview) — change both.
+const SUBJECT_REF_STANDIN = "the subject shown in the attached subject reference image(s)";
+function subjectForPrompt(subject, subjectRefCount) {
+  const s = String(subject || "").trim();
+  return s || (subjectRefCount ? SUBJECT_REF_STANDIN : "");
+}
+// Role labels for the image parts. Gemini receives one flat parts list, so the only way it can tell a
+// style reference from a subject reference is a text part introducing each group. Emitted ONLY when
+// subject references are present, so a plain style-refs-only call is byte-for-byte what it always was.
+const STYLE_REF_LABEL =
+  "STYLE REFERENCE IMAGES — the image(s) that follow define the VISUAL STYLE to imitate: the rendering " +
+  "technique, palette, lighting, level of detail, framing and presentation. Do NOT copy the subjects, " +
+  "characters or objects depicted in them.";
+const SUBJECT_REF_LABEL =
+  "SUBJECT REFERENCE IMAGES — the image(s) that follow show the ACTUAL SUBJECT to depict. Recreate this " +
+  "specific subject faithfully — its identity, distinguishing features, silhouette, clothing, equipment and " +
+  "colors must remain recognizable — but redraw it entirely in the visual style of the style reference " +
+  "images above. Do NOT carry over this image's own art style, rendering, lighting, framing or background.";
 
 // ---------- Gemini client (lazy so a missing key doesn't crash startup) ----------
 let _ai;
@@ -209,25 +229,37 @@ app.delete("/api/references/:subPresetId/:refId", async (req, res) => {
 });
 
 // ---------- generation ----------
-// body: { subPresetId, subject }
+// body: { subPresetId, subject, subjectReferences:[{ name, mimeType, dataBase64 }] }
+// The sub-preset's own referenceImages are STYLE references (read from disk). subjectReferences are
+// per-generation SUBJECT references: what to depict, arriving inline in the body like /api/generate-classic
+// (never stored on disk, never part of the preset). Either a subject string or a subject reference is required.
 app.post("/api/generate", async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not set. Add it to .env and restart the server." });
     }
-    const { subPresetId, subject } = req.body;
-    if (!subject || !subject.trim()) return res.status(400).json({ error: "Subject is required." });
+    const { subPresetId, subject, subjectReferences } = req.body;
+    const subjectRefs = (subjectReferences || []).filter((r) => r && r.dataBase64);
+    if ((!subject || !subject.trim()) && !subjectRefs.length)
+      return res.status(400).json({ error: "Subject or a subject reference image is required." });
 
     const data = await readPresets();
     const sub = findSubPreset(data, subPresetId);
     if (!sub) return res.status(404).json({ error: "Sub-preset not found." });
 
-    const prompt = injectSubject(sub.promptTemplate, subject);
+    const prompt = injectSubject(sub.promptTemplate, subjectForPrompt(subject, subjectRefs.length));
 
+    const styleRefs = sub.referenceImages || [];
     const parts = [{ text: prompt }];
-    for (const ref of sub.referenceImages || []) {
+    if (subjectRefs.length && styleRefs.length) parts.push({ text: STYLE_REF_LABEL });
+    for (const ref of styleRefs) {
       const buf = await fs.readFile(path.join(REFS_DIR, subPresetId, ref.filename));
       parts.push({ inlineData: { mimeType: ref.mimeType, data: buf.toString("base64") } });
+    }
+    if (subjectRefs.length) {
+      parts.push({ text: SUBJECT_REF_LABEL });
+      for (const ref of subjectRefs)
+        parts.push({ inlineData: { mimeType: ref.mimeType || "image/png", data: ref.dataBase64 } });
     }
 
     const response = await getAI().models.generateContent({

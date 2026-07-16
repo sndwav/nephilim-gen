@@ -30,7 +30,10 @@ Pick a preset (e.g. "Icon")
 
 - **Presets & sub-presets** — organize prompt templates by category and asset type.
 - **Live prompt preview** — see exactly what will be sent as you type (`{{subject}}` is replaced in place).
-- **Reference images** — upload style references per sub-preset; they're sent with the prompt.
+- **Style reference images** — upload style references per sub-preset; they're sent with the prompt.
+- **Subject reference images** — attach an image of the *thing itself* (a specific character, weapon, creature)
+  for a single generation. The AI remakes that subject in the sub-preset's style. Not saved to the preset;
+  cleared on reload. With one attached, the Subject text is optional.
 - **Per-sub-preset settings** — model, aspect ratio, and resolution.
 - **Prepare for export** — crop to a target size and overlay stacked PNG **frames** (with blend modes and opacity), then save a composed PNG.
 - **Download + auto-save** — every generation is saved to `data/outputs/` automatically.
@@ -157,16 +160,24 @@ Open **<http://localhost:5173>** in your browser.
 1. Pick a **preset** and **sub-preset** from the dropdowns on the left (a seeded **Icon → Ability Icon**
    example is included on first run).
 2. Type a **subject**. The read-only **prompt preview** updates live.
-3. Click **Generate** (or press **Ctrl+Enter**). The image appears on the right; a copy is auto-saved to `data/outputs/`.
-4. Use **Download** to save it anywhere, **Copy prompt** to copy the exact prompt used, or **Prepare for
+3. Optionally add **subject reference images** — an image of the specific character/object you want drawn.
+   The sub-preset's references say *how* to draw; these say *what* to draw, and the result is that subject
+   remade in the preset's style. With one attached you can leave the Subject text blank (the prompt points
+   at the image instead), or type text to refine it (e.g. *"holding a lantern"*). They're used for that
+   generation only — never saved into the preset, and cleared when you reload.
+4. Click **Generate** (or press **Ctrl+Enter**). The image appears on the right; a copy is auto-saved to `data/outputs/`.
+5. Use **Download** to save it anywhere, **Copy prompt** to copy the exact prompt used, or **Prepare for
    export** to crop to a target size and overlay PNG **frames** (blend modes + opacity) before saving a composed PNG.
 
 **Editing presets & references:** click **Edit** (or **+ New**) to open the editor. There you can rename
 presets, add/edit/delete sub-presets (prompt template, model, aspect ratio, resolution), and manage
-**reference images** (upload, view thumbnails, remove). Reference images define the style sent to the model.
+**style reference images** (upload, view thumbnails, remove). These define the style sent to the model, and
+are reused by every generation from that sub-preset — unlike subject references, which live in the main
+panel and last only for the current session.
 
 **Prompt templates** must contain the token `{{subject}}` where your typed subject should be inserted.
-If a template has no `{{subject}}`, the subject is appended at the end (the editor warns you).
+If a template has no `{{subject}}`, the subject is appended at the end (the editor warns you). If you attach
+a subject reference and type nothing, `{{subject}}` is filled with a phrase pointing at the attached image.
 
 **Models available per sub-preset:**
 
